@@ -1,13 +1,29 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const TRUE_VALUES = new Set(['true', '1', 'yes', 'y', 'on']);
+const FALSE_VALUES = new Set(['false', '0', 'no', 'n', 'off']);
+
+export function parseBooleanEnvValue(value: unknown, fallback: boolean): boolean {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (TRUE_VALUES.has(normalized)) return true;
+  if (FALSE_VALUES.has(normalized)) return false;
+  return fallback;
+}
+
+function booleanEnvWithFallback(fallback: boolean) {
+  return z.preprocess((value) => parseBooleanEnvValue(value, fallback), z.boolean());
+}
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.string().default('info'),
   DATABASE_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_DEFAULT_CHAT_ID: z.string().optional(),
-  TELEGRAM_SHOW_TRADE_PLACEHOLDER_BUTTONS: z.coerce.boolean().default(false),
+  TELEGRAM_SHOW_TRADE_PLACEHOLDER_BUTTONS: booleanEnvWithFallback(false),
   ETHEREUM_RPC_URL: z.string().optional(),
   BASE_RPC_URL: z.string().optional(),
   BSC_RPC_URL: z.string().optional(),
@@ -33,17 +49,17 @@ const schema = z.object({
   MONITOR_BSC_BLOCKS: z.coerce.number().int().positive().default(10000),
   MONITOR_GETLOGS_MAX_BLOCK_RANGE: z.coerce.number().int().positive().default(10),
   MONITOR_MAX_GETLOGS_CHUNKS_PER_RUN: z.coerce.number().int().positive().default(1000),
-  MONITOR_TX_CONTEXT: z.coerce.boolean().default(true),
+  MONITOR_TX_CONTEXT: booleanEnvWithFallback(true),
   MONITOR_MAX_TX_CONTEXT_LOOKUPS: z.coerce.number().int().positive().default(50),
   MONITOR_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
   MONITOR_SIGNAL_MIN_CATEGORY: z.enum(['strong_signal', 'watch_signal', 'weak_signal', 'ignored']).default('watch_signal'),
-  MONITOR_SEND_WEAK: z.coerce.boolean().default(false),
-  MONITOR_SEND_IGNORED: z.coerce.boolean().default(false),
-  MONITOR_DRY_RUN: z.coerce.boolean().default(false),
-  DISCOVERY_WORKER_ENABLED: z.coerce.boolean().default(true),
+  MONITOR_SEND_WEAK: booleanEnvWithFallback(false),
+  MONITOR_SEND_IGNORED: booleanEnvWithFallback(false),
+  MONITOR_DRY_RUN: booleanEnvWithFallback(false),
+  DISCOVERY_WORKER_ENABLED: booleanEnvWithFallback(true),
   DISCOVERY_INTERVAL_SECONDS: z.coerce.number().int().positive().default(21600),
-  DISCOVERY_DRY_RUN: z.coerce.boolean().default(true),
-  DISCOVERY_AUTO_ADD: z.coerce.boolean().default(false),
+  DISCOVERY_DRY_RUN: booleanEnvWithFallback(true),
+  DISCOVERY_AUTO_ADD: booleanEnvWithFallback(false),
   DISCOVERY_AUTO_ADD_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(70),
   DISCOVERY_MAX_NEW_WALLETS_PER_RUN: z.coerce.number().int().positive().default(20),
   DISCOVERY_OUTPUT_DIR: z.string().default('output/discovery-worker'),

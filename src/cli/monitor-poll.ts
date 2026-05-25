@@ -24,6 +24,7 @@ import {
   RpcKnownTokensActivityProvider,
 } from '../monitoring/wallet-activity-providers.js';
 import { TransactionContextAnalyzer } from '../monitoring/transaction-context.js';
+import { env } from '../config/env.js';
 
 export interface Args {
   watchlist: string;
@@ -383,8 +384,8 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
 
   const { eligibleSignals, skippedSignalsByPolicy } = getEligibleSignalsForDelivery(
     signals,
-    process.env.MONITOR_SEND_WEAK === 'true',
-    process.env.MONITOR_SEND_IGNORED === 'true',
+    env.MONITOR_SEND_WEAK,
+    env.MONITOR_SEND_IGNORED,
   );
 
   const dedupeFile = 'data/monitor-sent-signals.local.json';

@@ -4,11 +4,10 @@ import { pathToFileURL } from 'node:url';
 import { runMonitorPoll } from '../cli/monitor-poll.js';
 import { env } from '../config/env.js';
 import { buildMonitorArgsFromEnv, runOutputDir } from '../monitoring/monitor-runtime.js';
+import { parseBooleanFlagArg } from '../utils/cli-boolean.js';
 
 function parseFlag(name: string, fallback = false): boolean {
-  const i = process.argv.indexOf(`--${name}`);
-  if (i < 0) return fallback;
-  return (process.argv[i + 1] ?? 'true') === 'true';
+  return parseBooleanFlagArg(process.argv, name, fallback);
 }
 
 function parseNumberFlag(name: string, fallback: number): number {

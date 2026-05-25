@@ -4,11 +4,10 @@ import { pathToFileURL } from 'node:url';
 import { env } from '../config/env.js';
 import { bulkMergeAlphaWalletReviewEntries, getAlphaWalletReviewEntries, upsertAlphaWalletReviewEntry } from '../discovery/alpha-wallet-review-store.js';
 import { loadDiscoveryCandidates, mapCategoryToStatus, writeDiscoveryOutputs } from '../discovery/discovery-candidate-engine.js';
+import { parseBooleanFlagArg } from '../utils/cli-boolean.js';
 
 function parseFlag(name: string, fallback = false): boolean {
-  const i = process.argv.indexOf(`--${name}`);
-  if (i < 0) return fallback;
-  return (process.argv[i + 1] ?? 'true') === 'true';
+  return parseBooleanFlagArg(process.argv, name, fallback);
 }
 
 function runOutputDir(baseDir: string, now = new Date()): string {
