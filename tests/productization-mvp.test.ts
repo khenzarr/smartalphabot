@@ -14,6 +14,7 @@ describe('telegram menu command registration', () => {
       'status',
       'admin_status',
       'signals',
+      'preview_signal',
       'watchlist',
       'review',
       'promote',
@@ -203,7 +204,7 @@ describe('telegram admin command outputs', () => {
     const ctx = { chat: { id: 7 }, message: { text: '/review' }, reply: async (msg: string) => { replies.push(msg); } };
     await commandHandlers.get('review')!(ctx);
     expect(replies.at(-1)).toContain('Watch candidates: 1');
-    expect(replies.at(-1)).toContain('Top candidates:');
+    expect(replies.at(-1)).toContain('Candidates:');
   });
 
   it('promote explains non-eligible candidate and supports force mode', async () => {

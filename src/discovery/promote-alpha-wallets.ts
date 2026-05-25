@@ -11,6 +11,7 @@ interface PromoteArgs {
   force?: boolean;
   walletAddress?: string;
   chain?: string;
+  promotedNote?: string;
 }
 
 function parseArgs(argv: string[]): PromoteArgs {
@@ -26,6 +27,7 @@ function parseArgs(argv: string[]): PromoteArgs {
     force: read('force', 'false') === 'true',
     walletAddress: read('wallet-address', '').trim() || undefined,
     chain: read('chain', '').trim() || undefined,
+    promotedNote: read('promoted-note', '').trim() || undefined,
   };
 }
 
@@ -122,7 +124,7 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
         walletAddress: c.walletAddress,
         status: 'monitoring',
         promotedAt: new Date().toISOString(),
-        notes: 'Promoted via alpha:promote',
+        notes: args.promotedNote ?? (args.force ? 'Promoted via alpha:promote (force override)' : 'Promoted via alpha:promote'),
       });
       added += 1;
     }

@@ -23,7 +23,12 @@ export async function main() {
   console.log(`- output folder: ${String(summary.runDir ?? env.MONITOR_OUTPUT_DIR)}`);
   console.log('- top signals:');
   for (const s of signals.slice(0, 5)) {
-    console.log(`  [${String(s.category ?? 'n/a')}] ${String(s.chain ?? 'n/a')} ${String(s.symbol ?? s.name ?? 'unknown')} score=${String(s.score ?? 'n/a')}`);
+    const positives = Array.isArray(s.positiveReasons) ? s.positiveReasons.slice(0, 2).join('|') : 'n/a';
+    const negatives = Array.isArray(s.negativeReasons) ? s.negativeReasons.slice(0, 2).join('|') : 'n/a';
+    const blockers = Array.isArray(s.promotionBlockers) ? s.promotionBlockers.slice(0, 2).join('|') : 'none';
+    console.log(
+      `  [${String(s.category ?? 'n/a')}] ${String(s.chain ?? 'n/a')} ${String(s.symbol ?? s.name ?? 'unknown')} score=${String(s.score ?? 'n/a')} +${positives} -${negatives} blockers=${blockers}`,
+    );
   }
 }
 

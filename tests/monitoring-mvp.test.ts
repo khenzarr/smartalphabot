@@ -172,7 +172,7 @@ describe('monitoring MVP', () => {
     expect(events[0]?.warnings).toContain('incoming_transfer_not_confirmed_buy');
   });
 
-  it('groups signals by token and drops stable/wrapped tokens with drop reasons', () => {
+  it('groups signals by token and classifies stable/wrapped tokens as ignored with risk flags', () => {
     const result = buildSignalsWithStats([
       {
         chain: 'base', walletAddress: '0x1', tokenAddress: '0xaaa', from: '0x2', to: '0x1', rawAmount: '0x1', txHash: '0xtx1',
@@ -194,11 +194,13 @@ describe('monitoring MVP', () => {
     const signals = result.signals;
     const stable = signals.find((s) => s.tokenAddress === '0xaaa');
     const newToken = signals.find((s) => s.tokenAddress === '0xbbb');
-    expect(stable).toBeUndefined();
+    expect(stable).toBeDefined();
+    expect(stable?.category).toBe('ignored');
+    expect(stable?.riskFlags).toContain('stable_or_wrapped_token');
     expect(newToken?.watchedWalletCount).toBe(2);
-    expect(['strong_signal', 'watch_signal']).toContain(newToken?.category);
-    expect(result.groupsDropped).toBe(1);
-    expect(result.dropReasons.stablecoin_or_wrapped_token).toBe(1);
+    expect(['strong_signal', 'watch_signal', 'weak_signal']).toContain(newToken?.category);
+    expect(result.groupsDropped).toBe(0);
+    expect(result.dropReasons.stablecoin_or_wrapped_token ?? 0).toBe(0);
   });
 
   it('classifies all likely_buy context as likely_buy/high with distribution fields', () => {
@@ -303,6 +305,7 @@ describe('monitoring MVP', () => {
       watchedWallets: ['0x0000000000000000000000000000000000000001', '0x0000000000000000000000000000000000000002'],
       firstSeenAt: '', latestSeenAt: '', txCount: 3, uniqueTxCount: 2, marketCap: 1_000_000,
       liquidityUsd: 200_000, tokenAgeSeconds: 1000, warnings: ['requires_dex_context'], score: 70, category: 'strong_signal', reasons: ['likely_buy_detected'],
+      positiveReasons: ['likely_buy_context'], negativeReasons: ['manual_review_required'], promotionBlockers: [], qualityNotes: ['high_confidence_context'],
       likelyActivityType: 'likely_buy', confidence: 'high', knownRouterSeen: true,
       contextEventCount: 3,
       likelyBuyEventCount: 2,
@@ -329,6 +332,7 @@ describe('monitoring MVP', () => {
       watchedWallets: ['0x0000000000000000000000000000000000000001', '0x0000000000000000000000000000000000000002'],
       firstSeenAt: '', latestSeenAt: '', txCount: 4, uniqueTxCount: 3, marketCap: 1_000_000,
       liquidityUsd: 200_000, tokenAgeSeconds: 1000, warnings: [], score: 45, category: 'watch_signal', reasons: ['mixed_activity_detected'],
+      positiveReasons: ['likely_buy_context'], negativeReasons: ['manual_review_required'], promotionBlockers: ['manual_review_required'], qualityNotes: ['mixed_activity_detected'],
       likelyActivityType: 'mixed_activity', confidence: 'medium', knownRouterSeen: true,
       contextEventCount: 4,
       likelyBuyEventCount: 1,
@@ -351,6 +355,7 @@ describe('monitoring MVP', () => {
       chain: 'base', tokenAddress: '0xwhale', symbol: 'WHALE', name: 'Whale Token', watchedWalletCount: 1,
       watchedWallets: ['0x1'], firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1,
       marketCap: 2_000_000, liquidityUsd: 300_000, tokenAgeSeconds: 3600, warnings: [], score: 30, category: 'weak_signal', reasons: ['large_buy'],
+      positiveReasons: ['likely_buy_context'], negativeReasons: ['single_wallet_only'], promotionBlockers: ['single_wallet_only'], qualityNotes: ['single_wallet_watch_upgrade'],
       likelyActivityType: 'likely_buy', confidence: 'medium', knownRouterSeen: true,
       totalAmountNative: 7,
       contextEventCount: 1, likelyBuyEventCount: 1, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 0,
@@ -365,6 +370,7 @@ describe('monitoring MVP', () => {
     const msg = formatMonitorSignalMessage({
       chain: 'base', tokenAddress: '0xna', watchedWalletCount: 1, watchedWallets: ['0x1'],
       firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1, warnings: [], score: 10, category: 'watch_signal', reasons: [],
+      positiveReasons: [], negativeReasons: ['market_data_missing'], promotionBlockers: ['market_data_missing'], qualityNotes: [],
       likelyActivityType: 'unknown', confidence: 'low', knownRouterSeen: false,
       contextEventCount: 1, likelyBuyEventCount: 0, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 1,
       highConfidenceEventCount: 0, mediumConfidenceEventCount: 0, lowConfidenceEventCount: 1, knownRouterEventCount: 0,
@@ -379,6 +385,7 @@ describe('monitoring MVP', () => {
     const keyboard = buildSignalInlineKeyboard({
       chain: 'base', tokenAddress: '0xabc', watchedWalletCount: 1, watchedWallets: ['0x1'],
       firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1, warnings: [], score: 60, category: 'watch_signal', reasons: [],
+      positiveReasons: ['likely_buy_context'], negativeReasons: [], promotionBlockers: [], qualityNotes: [],
       likelyActivityType: 'likely_buy', confidence: 'high', knownRouterSeen: true,
       contextEventCount: 1, likelyBuyEventCount: 1, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 0,
       highConfidenceEventCount: 1, mediumConfidenceEventCount: 0, lowConfidenceEventCount: 0, knownRouterEventCount: 1,
@@ -396,6 +403,7 @@ describe('monitoring MVP', () => {
     const keyboard = buildSignalInlineKeyboard({
       chain: 'base', tokenAddress: '0xabc', watchedWalletCount: 1, watchedWallets: ['0x1'],
       firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1, warnings: [], score: 60, category: 'watch_signal', reasons: [],
+      positiveReasons: ['likely_buy_context'], negativeReasons: [], promotionBlockers: [], qualityNotes: [],
       likelyActivityType: 'likely_buy', confidence: 'high', knownRouterSeen: true,
       contextEventCount: 1, likelyBuyEventCount: 1, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 0,
       highConfidenceEventCount: 1, mediumConfidenceEventCount: 0, lowConfidenceEventCount: 0, knownRouterEventCount: 1,

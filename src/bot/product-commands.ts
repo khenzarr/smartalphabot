@@ -5,6 +5,7 @@ export const PRODUCT_MENU_COMMANDS = [
   { command: 'status', description: 'Bot and worker status' },
   { command: 'admin_status', description: 'Admin runtime summary' },
   { command: 'signals', description: 'Signal notification filters' },
+  { command: 'preview_signal', description: 'Preview production signal card' },
   { command: 'watchlist', description: 'Smart wallet watchlist' },
   { command: 'review', description: 'Alpha wallet review queue' },
   { command: 'promote', description: 'Promote review wallet to monitor' },

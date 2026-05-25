@@ -14,6 +14,12 @@ function uniq<T>(arr: T[]): T[] {
   return [...new Set(arr)];
 }
 
+function pushUnique(target: string[], ...items: string[]) {
+  for (const item of items) {
+    if (item && !target.includes(item)) target.push(item);
+  }
+}
+
 export function buildSignals(events: EnrichedTokenEvent[]): MonitorSignal[] {
   return buildSignalsWithStats(events).signals;
 }
@@ -56,6 +62,11 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
 
     let score = 0;
     const reasons: string[] = [];
+    const positiveReasons: string[] = [];
+    const negativeReasons: string[] = [];
+    const promotionBlockers: string[] = [];
+    const qualityNotes: string[] = [];
+    const riskFlags: string[] = [];
     const txContexts = rows.map((x) => x.transactionContext).filter((x): x is NonNullable<EnrichedTokenEvent['transactionContext']> => Boolean(x));
     const contextEventCount = txContexts.length;
     const likelyBuyEventCount = txContexts.filter((x) => x.likelyActivityType === 'likely_buy').length;
@@ -87,23 +98,24 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
     let activityType: MonitorSignal['likelyActivityType'] = 'unknown';
     if (contextEventCount === 0) {
       activityType = 'unknown';
-      reasons.push('no_tx_context_available');
+      pushUnique(negativeReasons, 'no_tx_context_available', 'market_data_missing');
     } else if (likelyBuyMajority && knownRouterSeen && !airdropMajority) {
       activityType = 'likely_buy';
-      reasons.push('likely_buy_majority_detected');
-      reasons.push('known_router_seen');
+      pushUnique(positiveReasons, 'likely_buy_context', 'known_router_seen');
     } else if (airdropMajority) {
       activityType = 'airdrop_or_claim';
-      reasons.push('airdrop_or_claim_majority_detected');
+      pushUnique(negativeReasons, 'airdrop_or_claim_dominant');
+      pushUnique(riskFlags, 'airdrop_or_claim_dominant');
+      pushUnique(promotionBlockers, 'airdrop_or_claim_dominant');
     } else if (hasLikelyBuy && (hasMixedComposition || !likelyBuyMajority)) {
       activityType = 'mixed_activity';
-      reasons.push('mixed_activity_detected');
+      pushUnique(qualityNotes, 'mixed_activity_detected');
     } else if (transferEventCount > 0) {
       activityType = 'transfer';
-      reasons.push('transfer_activity_detected');
+      pushUnique(qualityNotes, 'transfer_activity_detected');
     } else if (contractInteractionEventCount > 0) {
       activityType = 'contract_interaction';
-      reasons.push('contract_interaction_detected');
+      pushUnique(qualityNotes, 'contract_interaction_detected');
     }
 
     let confidence: MonitorSignal['confidence'] = 'low';
@@ -113,88 +125,133 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
 
     if (likelyBuyMajority && knownRouterSeen) {
       score += 30;
+      pushUnique(positiveReasons, 'likely_buy_context');
     } else if (hasLikelyBuy) {
       score += 8;
-      reasons.push('likely_buy_detected_but_not_majority');
+      pushUnique(qualityNotes, 'likely_buy_detected_but_not_majority');
     }
     if (knownRouterSeen) {
       score += 10;
     } else if (contextEventCount > 0) {
       score -= 10;
-      reasons.push('no_router_evidence');
+      pushUnique(negativeReasons, 'no_router_evidence');
     }
     if (activityType === 'mixed_activity') {
       score -= 12;
-      reasons.push('manual_review_required');
+      pushUnique(negativeReasons, 'manual_review_required');
     }
     if (activityType === 'airdrop_or_claim') {
       score -= 20;
-      reasons.push('airdrop_or_claim_majority_penalty');
-      reasons.push('manual_review_required');
+      pushUnique(negativeReasons, 'airdrop_or_claim_majority_penalty', 'manual_review_required');
     }
     if (unknownEventCount > 0) {
       score -= Math.min(12, unknownEventCount * 2);
-      reasons.push('tx_context_unknown');
+      pushUnique(negativeReasons, 'tx_context_unknown');
+      pushUnique(qualityNotes, 'limited_context');
     }
     if (confidence === 'low') {
       score -= 10;
-      reasons.push('low_context_confidence');
+      pushUnique(negativeReasons, 'low_context_confidence');
     }
 
     if (wallets.length >= 2) {
       score += 25;
-      reasons.push('multiple_watched_wallet_overlap');
+      pushUnique(positiveReasons, 'multi_wallet_consensus');
     } else {
       score -= 15;
-      reasons.push('single_wallet_only');
+      pushUnique(negativeReasons, 'single_wallet_only');
+      pushUnique(promotionBlockers, 'single_wallet_only');
     }
     if ((sample.marketCap ?? Number.MAX_SAFE_INTEGER) < 5_000_000) {
       score += 15;
-      reasons.push('marketcap_under_5m');
+      pushUnique(positiveReasons, 'marketcap_under_5m');
     } else if ((sample.marketCap ?? 0) > 200_000_000) {
       score -= 15;
-      reasons.push('high_market_cap');
+      pushUnique(negativeReasons, 'high_market_cap');
+      pushUnique(riskFlags, 'high_market_cap');
     }
     if ((sample.liquidityUsd ?? 0) > 100_000) {
       score += 10;
-      reasons.push('liquidity_over_100k');
+      pushUnique(positiveReasons, 'liquidity_over_100k');
+    } else if (sample.liquidityUsd == null) {
+      pushUnique(negativeReasons, 'liquidity_unknown');
+      pushUnique(qualityNotes, 'market_data_missing');
     }
     if ((sample.tokenAgeSeconds ?? Number.MAX_SAFE_INTEGER) < 24 * 3600) {
       score += 20;
-      reasons.push('token_age_under_24h');
+      pushUnique(positiveReasons, 'token_age_under_24h');
     } else if ((sample.tokenAgeSeconds ?? Number.MAX_SAFE_INTEGER) < 72 * 3600) {
       score += 12;
-      reasons.push('token_age_under_72h');
+      pushUnique(positiveReasons, 'token_age_under_72h');
     } else if ((sample.tokenAgeSeconds ?? Number.MAX_SAFE_INTEGER) < 7 * 24 * 3600) {
       score += 6;
-      reasons.push('token_age_under_7d');
+      pushUnique(positiveReasons, 'token_age_under_7d');
     }
 
     const avgWalletScore = rows.reduce((acc, r) => acc + (r.walletScore ?? 0), 0) / Math.max(rows.length, 1);
     score += Math.min(20, Math.floor(avgWalletScore / 5));
-    reasons.push('wallet_discovery_score_weighted');
+    pushUnique(positiveReasons, 'wallet_discovery_score_weighted');
+    if (avgWalletScore >= 75) pushUnique(positiveReasons, 'watchlist_wallet_score_high');
+    if (avgWalletScore > 0 && avgWalletScore < 55) {
+      pushUnique(negativeReasons, 'watchlist_wallet_score_low');
+      pushUnique(promotionBlockers, 'watchlist_wallet_score_low');
+    }
 
     if (!sample.symbol && !sample.name) {
       score -= 12;
-      reasons.push('missing_market_profile');
+      pushUnique(negativeReasons, 'market_data_missing', 'missing_market_profile');
     }
     if ((sample.liquidityUsd ?? 0) < 20_000) {
       score -= 12;
-      reasons.push('liquidity_under_20k');
+      pushUnique(negativeReasons, 'liquidity_under_20k');
+      pushUnique(promotionBlockers, 'liquidity_under_20k');
     }
     if ((sample.tokenAgeSeconds ?? 0) > 30 * 24 * 3600) {
       score -= 20;
-      reasons.push('old_token');
+      pushUnique(negativeReasons, 'old_token');
     }
     if (IGNORED_TOKEN_SYMBOLS.has(symbolLower)) {
-      bumpDropReason('stablecoin_or_wrapped_token');
-      continue;
+      pushUnique(riskFlags, 'stable_or_wrapped_token');
+      pushUnique(negativeReasons, 'stable_or_wrapped_token');
+      pushUnique(promotionBlockers, 'stable_or_wrapped_token');
     }
 
+    if (confidence === 'high') pushUnique(positiveReasons, 'high_confidence_context');
+    if (contextEventCount === 0) pushUnique(promotionBlockers, 'market_data_missing');
+
     let category: MonitorSignal['category'] = 'weak_signal';
-    if (score >= 60) category = 'strong_signal';
-    else if (score >= 35) category = 'watch_signal';
-    else if (score <= 0) category = 'ignored';
+    const stableOrWrapped = IGNORED_TOKEN_SYMBOLS.has(symbolLower);
+    const nonAirdropEvents = Math.max(0, contextEventCount - airdropOrClaimEventCount);
+    const strongLikelyBuy = activityType === 'likely_buy' && confidence !== 'low';
+    const acceptableLiquidity = (sample.liquidityUsd ?? 0) >= 20_000 || sample.liquidityUsd == null;
+    const notOldHighCap = (sample.marketCap ?? 0) < 200_000_000 || wallets.length >= 2;
+
+    if (activityType === 'airdrop_or_claim' || stableOrWrapped) {
+      category = 'ignored';
+      pushUnique(negativeReasons, 'clearly_low_signal_activity');
+    } else if (
+      wallets.length >= 2
+      && likelyBuyMajority
+      && nonAirdropEvents > 0
+      && (confidence === 'high' || confidence === 'medium')
+      && acceptableLiquidity
+      && notOldHighCap
+    ) {
+      category = 'strong_signal';
+      pushUnique(positiveReasons, 'multi_wallet_consensus', 'likely_buy_context');
+    } else if (
+      (wallets.length >= 2 && nonAirdropEvents > 0)
+      || (wallets.length === 1 && avgWalletScore >= 70 && strongLikelyBuy && acceptableLiquidity)
+      || (wallets.length === 1 && rows.length >= 3 && strongLikelyBuy && !stableOrWrapped)
+    ) {
+      category = 'watch_signal';
+      if (wallets.length === 1) pushUnique(qualityNotes, 'single_wallet_watch_upgrade');
+    } else if (score <= 0) {
+      category = 'ignored';
+    }
+
+    pushUnique(reasons, ...positiveReasons, ...negativeReasons, ...qualityNotes, ...promotionBlockers);
+
 
     out.push({
       chain: sample.chain,
@@ -214,6 +271,11 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
       score,
       category,
       reasons,
+      positiveReasons,
+      negativeReasons,
+      promotionBlockers,
+      qualityNotes,
+      riskFlags,
       dexUrl: sample.dexUrl,
       likelyActivityType: activityType,
       confidence,

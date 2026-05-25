@@ -4,7 +4,11 @@ import path from 'node:path';
 const DEFAULT_PENDING_INPUT_PATH = 'data/telegram-pending-inputs.local.json';
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
-export type PendingInputType = 'alpha_wallet_address' | 'promote_wallet_address' | 'reject_wallet_address';
+export type PendingInputType =
+  | 'alpha_wallet_address'
+  | 'promote_wallet_address'
+  | 'reject_wallet_address'
+  | 'reject_wallet_reason';
 
 export interface TelegramPendingInput {
   chatId: string;

@@ -14,6 +14,8 @@ import { copytradeComingSoon, positionsComingSoon, settingsComingSoon, walletCom
 import { clearPendingInput, getPendingInput, setPendingInput } from './pending-input-state.js';
 import { promoteAlphaWallets } from '../discovery/promote-alpha-wallets.js';
 import { executeDiscoveryWorkerRun } from '../worker/discovery-worker.js';
+import { buildSignalInlineKeyboard, formatMonitorSignalMessage } from './messages/monitor-signal-message.js';
+import type { MonitorSignal, MonitorSignalCategory } from '../monitoring/monitoring.types.js';
 
 async function readJsonSafe<T>(filePath: string, fallback: T): Promise<T> {
   try {
@@ -21,6 +23,24 @@ async function readJsonSafe<T>(filePath: string, fallback: T): Promise<T> {
   } catch {
     return fallback;
   }
+}
+
+function shortWallet(wallet: string): string {
+  return wallet.length > 12 ? `${wallet.slice(0, 8)}...${wallet.slice(-4)}` : wallet;
+}
+
+function parseTokens(text: string): string[] {
+  return text.split(/\s+/).slice(1).map((x) => x.trim()).filter(Boolean);
+}
+
+function toSignalCategory(input?: string): MonitorSignalCategory | undefined {
+  const normalized = (input ?? '').toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'strong' || normalized === 'strong_signal') return 'strong_signal';
+  if (normalized === 'watch' || normalized === 'watch_signal') return 'watch_signal';
+  if (normalized === 'weak' || normalized === 'weak_signal') return 'weak_signal';
+  if (normalized === 'ignored') return 'ignored';
+  return undefined;
 }
 
 function botRequiredToken(): string {
@@ -51,8 +71,9 @@ export async function createAndStartBot() {
     '/start',
     '/status',
     '/signals',
+    '/preview_signal [strong|watch|weak|ignored]',
     '/watchlist',
-    '/review',
+    '/review [all|high|watch|needs|rejected|monitoring]',
     '/promote <walletAddress>',
     '/reject <walletAddress>',
     '/monitor_now',
@@ -111,27 +132,101 @@ export async function createAndStartBot() {
   });
 
   bot.command('signals', async (ctx) => {
-    const signals = await readJsonSafe<Array<{ category?: string; symbol?: string; name?: string; chain?: string; score?: number; likelyActivityType?: string; confidence?: string }>>(path.join(env.MONITOR_OUTPUT_DIR, 'latest-signals.json'), []);
-    const lines = signals.slice(0, 10).map((s) => `[${s.category}] ${s.symbol ?? s.name ?? 'unknown'} ${s.chain} score=${s.score ?? 'n/a'} activity=${s.likelyActivityType ?? 'n/a'} conf=${s.confidence ?? 'n/a'}`);
-    await ctx.reply(lines.length ? lines.join('\n') : 'No latest signals found yet.');
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/signals';
+    const parts = parseTokens(text);
+    const categoryFilter = toSignalCategory(parts[0]);
+    const limit = Math.min(25, Math.max(1, Number(parts[1] ?? '10') || 10));
+
+    const signals = await readJsonSafe<MonitorSignal[]>(path.join(env.MONITOR_OUTPUT_DIR, 'latest-signals.json'), []);
+    const scoped = categoryFilter ? signals.filter((x) => x.category === categoryFilter) : signals;
+    const lines = scoped.slice(0, limit).map((s) => {
+      const positives = (s.positiveReasons ?? []).slice(0, 2).join('|') || 'n/a';
+      const negatives = (s.negativeReasons ?? []).slice(0, 2).join('|') || 'n/a';
+      const blockers = (s.promotionBlockers ?? []).slice(0, 2).join('|') || 'none';
+      return `[${s.category}] ${s.symbol ?? s.name ?? 'unknown'} ${s.chain} score=${s.score ?? 'n/a'} wallets=${s.watchedWalletCount} activity=${s.likelyActivityType ?? 'n/a'} +${positives} -${negatives} blockers=${blockers}`;
+    });
+
+    const byCategory = {
+      strong: signals.filter((x) => x.category === 'strong_signal').length,
+      watch: signals.filter((x) => x.category === 'watch_signal').length,
+      weak: signals.filter((x) => x.category === 'weak_signal').length,
+      ignored: signals.filter((x) => x.category === 'ignored').length,
+    };
+    await ctx.reply([
+      `Signals total=${signals.length} strong=${byCategory.strong} watch=${byCategory.watch} weak=${byCategory.weak} ignored=${byCategory.ignored}`,
+      `Filter=${categoryFilter ?? 'all'} limit=${limit}`,
+      ...(lines.length ? lines : ['No latest signals found for this filter.']),
+      'Tip: /signals watch 15',
+    ].join('\n'));
+  });
+
+  bot.command('preview_signal', async (ctx) => {
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/preview_signal';
+    const parts = parseTokens(text);
+    const category = toSignalCategory(parts[0]) ?? 'watch_signal';
+
+    const mockSignal: MonitorSignal = {
+      chain: 'base', tokenAddress: '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2', tokenSymbol: 'ALPHA', tokenName: 'Alpha Radar',
+      symbol: 'ALPHA', name: 'Alpha Radar', marketCapUsd: 2450000, tokenAge: 10800, priceUsd: 0.004812,
+      smartWalletCount: 3, watchedWalletCount: 3,
+      watchedWallets: ['0x74de5d4fcbf63e00296fd95d33236b9794016631', '0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222'],
+      walletScores: [82, 76, 71], firstSeenAt: new Date(Date.now() - 7 * 60 * 1000).toISOString(), latestSeenAt: new Date().toISOString(),
+      txCount: 6, uniqueTxCount: 4, marketCap: 2450000, liquidityUsd: 185000, tokenAgeSeconds: 10800, totalAmountNative: 8.42, totalAmountUsd: 22840,
+      warnings: [], score: category === 'strong_signal' ? 93 : category === 'watch_signal' ? 74 : category === 'weak_signal' ? 38 : -6,
+      category, reasons: ['likely_buy_context', 'multi_wallet_consensus', 'manual_review_required'],
+      positiveReasons: ['likely_buy_context', 'known_router_seen', 'multi_wallet_consensus'],
+      negativeReasons: category === 'ignored' ? ['airdrop_or_claim_dominant'] : ['manual_review_required'],
+      promotionBlockers: category === 'strong_signal' ? [] : ['manual_review_required'], qualityNotes: ['high_confidence_context'],
+      riskFlags: category === 'ignored' ? ['stable_or_wrapped_token'] : [],
+      dexScreenerUrl: 'https://dexscreener.com/base/0x1234', dexUrl: 'https://dexscreener.com/base/0x1234',
+      explorerUrl: 'https://basescan.org/token/0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2', xSearchUrl: 'https://x.com/search?q=%24ALPHA%20base',
+      likelyActivityType: category === 'ignored' ? 'airdrop_or_claim' : 'likely_buy', confidence: 'high', knownRouterSeen: true,
+      contextEventCount: 6, likelyBuyEventCount: 4, transferEventCount: 1, airdropOrClaimEventCount: category === 'ignored' ? 5 : 0,
+      contractInteractionEventCount: 1, unknownEventCount: 0, highConfidenceEventCount: 4, mediumConfidenceEventCount: 2,
+      lowConfidenceEventCount: 0, knownRouterEventCount: 4,
+      contextComposition: category === 'ignored' ? { airdrop_or_claim: 5, transfer: 1 } : { likely_buy: 4, transfer: 1, contract_interaction: 1 },
+    };
+
+    await ctx.reply(formatMonitorSignalMessage(mockSignal), {
+      reply_markup: buildSignalInlineKeyboard(mockSignal),
+    });
   });
 
   bot.command('review', async (ctx) => {
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/review';
+    const mode = (parseTokens(text)[0] ?? 'all').toLowerCase();
     const alphaReview = await getAlphaWalletReviewEntries();
     const highConfidence = alphaReview.filter((x) => x.status === 'high_confidence' || x.category === 'high_confidence');
     const watchCandidates = alphaReview.filter((x) => x.category === 'watch_candidate');
     const needsReview = alphaReview.filter((x) => x.status === 'needs_review' || x.status === 'pending_review' || x.category === 'needs_review');
-    const top = [...alphaReview]
+    const rejected = alphaReview.filter((x) => x.status === 'rejected' || x.category === 'rejected');
+    const monitoring = alphaReview.filter((x) => x.status === 'monitoring');
+    const filtered = mode === 'high'
+      ? highConfidence
+      : mode === 'watch'
+        ? watchCandidates
+        : mode === 'needs'
+          ? needsReview
+          : mode === 'rejected'
+            ? rejected
+            : mode === 'monitoring'
+              ? monitoring
+              : alphaReview;
+    const top = [...filtered]
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-      .slice(0, 5)
-      .map((x) => `${x.chain}:${x.walletAddress.slice(0, 8)}... score=${x.score ?? 'n/a'} category=${x.category ?? 'n/a'} reasons=${(x.reasons ?? []).slice(0, 2).join('|') || 'n/a'}`);
+      .slice(0, 10)
+      .map((x) => `${x.chain}:${shortWallet(x.walletAddress)} score=${x.score ?? 'n/a'} category=${x.category ?? 'n/a'} status=${x.status} reasons=${(x.reasons ?? []).slice(0, 2).join('|') || 'n/a'}`);
     await ctx.reply([
       `Review queue total: ${alphaReview.length}`,
       `High confidence: ${highConfidence.length}`,
       `Watch candidates: ${watchCandidates.length}`,
       `Needs review: ${needsReview.length}`,
-      'Top candidates:',
+      `Rejected: ${rejected.length}`,
+      `Monitoring: ${monitoring.length}`,
+      `Mode: ${mode}`,
+      'Candidates:',
       ...(top.length ? top : ['n/a']),
+      'Tip: /review high',
     ].join('\n'));
   });
 
@@ -140,6 +235,7 @@ export async function createAndStartBot() {
     const parts = text.split(/\s+/).slice(1).filter(Boolean);
     const maybeAddress = parts[0]?.trim() ?? '';
     const force = (parts[1] ?? '').toLowerCase() === 'force';
+    const forceNote = force ? parts.slice(2).join(' ').trim() : '';
     if (!maybeAddress) {
       await setPendingInput(String(ctx.chat.id), 'promote_wallet_address');
       await ctx.reply('Send wallet address to promote from review queue.');
@@ -159,6 +255,7 @@ export async function createAndStartBot() {
         force: true,
         walletAddress: maybeAddress,
         chain: candidate.chain,
+        promotedNote: forceNote || `Promoted via /promote force by chat:${ctx.chat.id}`,
       });
       await ctx.reply(`Forced promotion applied for ${maybeAddress}. Added to monitor list only (no trading).`);
       return;
@@ -195,21 +292,32 @@ export async function createAndStartBot() {
 
   bot.command('reject', async (ctx) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/reject';
-    const maybeAddress = text.split(/\s+/).slice(1).join(' ').trim();
+    const parts = text.split(/\s+/).slice(1).filter(Boolean);
+    const maybeAddress = parts[0]?.trim() ?? '';
+    const reason = parts.slice(1).join(' ').trim();
     if (!maybeAddress) {
       await setPendingInput(String(ctx.chat.id), 'reject_wallet_address');
       await ctx.reply('Send wallet address to reject from review queue.');
       return;
     }
     const candidate = await findReviewCandidate(maybeAddress);
+    const chain = candidate?.chain ?? 'ethereum';
+    if (!reason) {
+      await setPendingInput(String(ctx.chat.id), 'reject_wallet_reason', {
+        walletAddress: maybeAddress,
+        chain,
+      });
+      await ctx.reply(`Send reject reason for ${maybeAddress}. Example: low quality flow, suspicious activity, duplicate wallet.`);
+      return;
+    }
     await updateAlphaWalletReviewStatus({
-      chain: candidate?.chain ?? 'ethereum',
+      chain,
       walletAddress: maybeAddress,
       status: 'rejected',
       rejectedAt: new Date().toISOString(),
-      notes: 'Rejected via /reject',
+      notes: `Rejected via /reject: ${reason}`,
     });
-    await ctx.reply(`Rejected wallet: ${maybeAddress} (status=rejected).`);
+    await ctx.reply(`Rejected wallet: ${maybeAddress} (status=rejected, reason saved).`);
   });
 
   bot.command('alpha_wallet_ekle', async (ctx) => {
@@ -268,15 +376,32 @@ export async function createAndStartBot() {
 
     if (pending.type === 'reject_wallet_address') {
       const candidate = await findReviewCandidate(text);
-      await updateAlphaWalletReviewStatus({
-        chain: candidate?.chain ?? 'ethereum',
+      const chain = candidate?.chain ?? 'ethereum';
+      await setPendingInput(chatId, 'reject_wallet_reason', {
         walletAddress: text,
+        chain,
+      });
+      await ctx.reply(`Send reject reason for ${text}.`);
+      return;
+    }
+
+    if (pending.type === 'reject_wallet_reason') {
+      const walletAddress = String(pending.metadata?.walletAddress ?? '').trim();
+      const chain = String(pending.metadata?.chain ?? 'ethereum').trim() || 'ethereum';
+      if (!walletAddress) {
+        await clearPendingInput(chatId);
+        await ctx.reply('Reject flow expired. Please run /reject again.');
+        return;
+      }
+      await updateAlphaWalletReviewStatus({
+        chain,
+        walletAddress,
         status: 'rejected',
         rejectedAt: new Date().toISOString(),
-        notes: 'Rejected via /reject conversational flow',
+        notes: `Rejected via conversational flow: ${text}`,
       });
       await clearPendingInput(chatId);
-      await ctx.reply(`Rejected wallet: ${text} (status=rejected).`);
+      await ctx.reply(`Rejected wallet: ${walletAddress} (status=rejected, reason saved).`);
       return;
     }
 

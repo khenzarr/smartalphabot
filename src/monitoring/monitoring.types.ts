@@ -219,6 +219,10 @@ export interface MonitorSignal {
   score: number;
   category: MonitorSignalCategory;
   reasons: string[];
+  positiveReasons: string[];
+  negativeReasons: string[];
+  promotionBlockers: string[];
+  qualityNotes: string[];
   riskFlags?: string[];
   dexScreenerUrl?: string;
   dexUrl?: string;
