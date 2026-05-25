@@ -1,0 +1,16 @@
+[
+  {
+    "chain": "base",
+    "tokenAddress": "0x1111111111111111111111111111111111111111",
+    "label": "EXAMPLE_BASE_WINNER",
+    "narrative": "meme",
+    "notes": "Known winner token used for discovery"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x2222222222222222222222222222222222222222",
+    "label": "EXAMPLE_BSC_RUNNER",
+    "narrative": "meme",
+    "notes": "Known BSC runner"
+  }
+]

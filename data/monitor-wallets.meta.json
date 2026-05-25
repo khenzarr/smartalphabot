@@ -1,0 +1,12 @@
+{
+  "input": "output/seed-batch-auto-keep-wide-v1/candidate-shortlist.csv",
+  "out": "data/monitor-wallets.json",
+  "importedAt": "2026-05-24T22:17:44.402Z",
+  "importedCount": 11,
+  "dedupedCount": 11,
+  "filters": {
+    "minAppearances": 2,
+    "minScore": 40,
+    "includeRejected": true
+  }
+}

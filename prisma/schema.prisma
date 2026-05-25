@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SupportedChain {
+  ethereum
+  base
+  bsc
+  solana
+}
+
+enum ChainFamily {
+  evm
+  solana
+}
+
+enum TradeSide {
+  buy
+  sell
+}
+
+model User {
+  id         String   @id @default(cuid())
+  telegramId String   @unique
+  username   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  watchlist UserWatchlist[]
+  signals   Signal[]
+}
+
+model Wallet {
+  id             String   @id @default(cuid())
+  chain          SupportedChain
+  chainFamily    ChainFamily
+  address        String
+  label          String?
+  isSmart        Boolean  @default(false)
+  scoreLatest    Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  trades         Trade[]
+  performances   WalletTokenPerformance[]
+  scoreSnapshots WalletScoreSnapshot[]
+  watchlistedBy  UserWatchlist[]
+
+  @@unique([chain, address], name: "chain_address")
+  @@index([chain, scoreLatest])
+}
+
+model Token {
+  id           String   @id @default(cuid())
+  chain        SupportedChain
+  chainFamily  ChainFamily
+  address      String
+  symbol       String?
+  name         String?
+  pairAddress  String?
+  poolAddress  String?
+  dexId        String?
+  marketCap    Decimal? @db.Decimal(38, 18)
+  fdv          Decimal? @db.Decimal(38, 18)
+  liquidityUsd Decimal? @db.Decimal(38, 18)
+  priceUsd     Decimal? @db.Decimal(38, 18)
+  pairCreatedAt DateTime?
+  metadataRaw  Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trades       Trade[]
+  performances WalletTokenPerformance[]
+  signals      Signal[]
+
+  @@unique([chain, address], name: "chain_address")
+  @@index([chain, createdAt])
+}
+
+model Trade {
+  id               String   @id @default(cuid())
+  chain            SupportedChain
+  chainFamily      ChainFamily
+  txHash           String
+  side             TradeSide
+  amountToken      Decimal  @db.Decimal(38, 18)
+  amountUsd        Decimal? @db.Decimal(38, 18)
+  priceUsd         Decimal? @db.Decimal(38, 18)
+  marketCapAtTrade Decimal? @db.Decimal(38, 18)
+  liquidityAtTrade Decimal? @db.Decimal(38, 18)
+  blockNumber      BigInt?
+  slot             BigInt?
+  timestamp        DateTime
+  dex              String?
+  raw              Json?
+  createdAt        DateTime @default(now())
+
+  walletId String
+  tokenId  String
+  wallet   Wallet @relation(fields: [walletId], references: [id])
+  token    Token  @relation(fields: [tokenId], references: [id])
+
+  @@unique([chain, txHash, walletId, tokenId])
+  @@index([walletId, timestamp])
+  @@index([tokenId, timestamp])
+  @@index([chain, txHash])
+}
+
+model WalletTokenPerformance {
+  id                   String   @id @default(cuid())
+  walletId             String
+  tokenId              String
+  chain                SupportedChain
+  totalBuys            Int      @default(0)
+  totalSells           Int      @default(0)
+  realizedPnlUsd       Decimal? @db.Decimal(38, 18)
+  unrealizedPnlUsd     Decimal? @db.Decimal(38, 18)
+  roi                  Decimal? @db.Decimal(18, 8)
+  averageHoldSeconds   Int?
+  medianHoldSeconds    Int?
+  earlyEntry           Boolean  @default(false)
+  successfulEarlyEntry Boolean  @default(false)
+  rugExposure          Boolean  @default(false)
+  firstBuyAt           DateTime?
+  firstBuyMarketCap    Decimal? @db.Decimal(38, 18)
+  firstBuyTxHash       String?
+  updatedAt            DateTime @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+  token  Token  @relation(fields: [tokenId], references: [id])
+
+  @@unique([walletId, tokenId])
+  @@index([chain, earlyEntry, successfulEarlyEntry])
+}
+
+model UserWatchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  walletId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@unique([userId, walletId])
+}
+
+model Signal {
+  id        String   @id @default(cuid())
+  chain     SupportedChain
+  tokenId   String
+  userId    String?
+  score     Int
+  headline  String
+  riskFlags String[]
+  payload   Json
+  createdAt DateTime @default(now())
+
+  token Token @relation(fields: [tokenId], references: [id])
+  user  User? @relation(fields: [userId], references: [id])
+
+  @@index([chain, createdAt])
+  @@index([score, createdAt])
+}
+
+model AnalysisJob {
+  id          String   @id @default(cuid())
+  chain       SupportedChain
+  targetType  String
+  targetValue String
+  jobType     String?
+  status      String
+  input       Json?
+  result      Json?
+  warnings    String[]
+  attempts    Int      @default(0)
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([chain, targetType, targetValue])
+  @@index([status, updatedAt])
+}
+
+model ProviderCursor {
+  id           String   @id @default(cuid())
+  providerName String
+  chain        SupportedChain
+  cursorKey    String
+  cursorValue  String
+  updatedAt    DateTime @updatedAt
+
+  @@unique([providerName, chain, cursorKey])
+}
+
+model WalletScoreSnapshot {
+  id        String   @id @default(cuid())
+  walletId  String
+  chain     SupportedChain
+  score     Int
+  category  String
+  reasons   String[]
+  riskFlags String[]
+  createdAt DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([chain, score, createdAt])
+}

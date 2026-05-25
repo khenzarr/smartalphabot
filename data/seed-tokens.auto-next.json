@@ -1,0 +1,254 @@
+[
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+    "label": "PEPE",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xe76c6c83af64e4c60245d8c7de953df673a7a33d",
+    "label": "RAIL",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xf280b16ef293d8e534e370794ef26bf312694126",
+    "label": "ASTEROID",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x8de39b057cc6522230ab19c0205080a8663331ef",
+    "label": "wojak",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x0000000000c5dc95539589fbd24be07c6c14eca4",
+    "label": "CULT",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed but may need stable RPC"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x532f27101965dd16442e59d40670faf5ebb142e4",
+    "label": "BRETT",
+    "narrative": "base_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xcf0c122c6b73ff809c693db761e7baebe62b6a2e",
+    "label": "ETHEREUM_FLOKI",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=357.59"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xaaee1a9723aadb7afa2810263653a34ba2c21c7a",
+    "label": "ETHEREUM_Mog",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=106.93"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xa35923162c49cf95e6bf26623385eb431ad920d3",
+    "label": "ETHEREUM_TURBO",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=78.43"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee",
+    "label": "ETHEREUM_Neiro",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=72.57"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x4d7078ddd6ccfed2f85db5b7d3ff16828d378d48",
+    "label": "ETHEREUM_AI",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=59.03"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x38e68a37e401f7271568cecaac63c6b1e19130b4",
+    "label": "ETHEREUM_BANANA",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=43.28"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b",
+    "label": "BASE_VIRTUAL",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=513.94"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4",
+    "label": "BASE_TOSHI",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=77.94"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x4ed4e862860bed51a9570b96d89af5e1b0efefed",
+    "label": "BASE_DEGEN",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=43.12"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x4f9fd6be4a90f2620860d680c0d4d5fb53d1a825",
+    "label": "BASE_AIXBT",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=32.93"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0xfca95aeb5bf44ae355806a5ad14659c940dc6bf7",
+    "label": "BASE_SHIB",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=4.80"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0xb69bbb15095c0949489fbb43951d2b750fa7fa89",
+    "label": "BASE_DEXTF",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=4.40"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x5f09821cbb61e09d2a83124ae0b56aaa3ae85b07",
+    "label": "BASE_DOTA",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=1.53"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x7b44fe95c1350caace733c23db7f820887f8ed6c",
+    "label": "BASE_agent",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=1.15"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x4160efdd66521483c22cb98b57b87d1fdafeab07",
+    "label": "BASE_MFERGPT",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=0.87"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x0578d8a44db98b23bf096a382e016e29a5ce0ffe",
+    "label": "BASE_HIGHER",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=0.66"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x22b1458e780f8fa71e2f84502cee8b5a3cc731fa",
+    "label": "BSC_M",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=3779.20"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0xfb5b838b6cfeedc2873ab27866079ac55363d37e",
+    "label": "BSC_FLOKI",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=375.05"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0xba2ae424d960c26247dd6c32edc70b295c744c43",
+    "label": "BSC_DOGE",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=264.36"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x9daf1a070f882d870a8d58d7a27041c752f3b88d",
+    "label": "BSC_MHORSE",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:strict;source=search_queries;score=84.28"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x6a2608dabe09bc1128eec7275b92dfb939d5db3f",
+    "label": "BSC_TOSHI",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=71.39"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x2859e4544c4bb03966803b044a93563bd2d0dd4d",
+    "label": "BSC_SHIB",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=55.11"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x4206931337dc273a630d328da6441786bfad668f",
+    "label": "BSC_DOGE",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=29.88"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x6894cde390a3f51155ea41ed24a33a4827d3063d",
+    "label": "BSC_CAT",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=17.01"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x9f3bcbe48e8b754f331dfc694a894e8e686ac31d",
+    "label": "BSC_ACT",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=8.01"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0xa7440029eca41deabd8775ef1d6086b37d4df8d6",
+    "label": "BSC_BRETT",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=4.38"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+    "label": "BSC_PEPE",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:moderate;source=search_queries;score=3.21"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0xf43c8f27754829202d2f66650eb3f6d168c288dc",
+    "label": "BSC_PEPE",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=2.97"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0xf74548802f4c700315f019fde17178b392ee4444",
+    "label": "BSC_memes",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=1.51"
+  },
+  {
+    "chain": "bsc",
+    "tokenAddress": "0x1eb55169c045dd91ac47a0c3af2fb1df93064444",
+    "label": "BSC_Moon",
+    "narrative": "ethereum_meme",
+    "notes": "auto_discovered:loose;source=search_queries;score=0.34"
+  }
+]

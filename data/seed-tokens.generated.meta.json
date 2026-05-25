@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-05-24T00:59:43.914Z",
+  "filters": {
+    "chains": [
+      "ethereum",
+      "base",
+      "bsc"
+    ],
+    "includeLatestProfiles": true,
+    "includeLatestBoosts": true,
+    "includeTopBoosts": true,
+    "minMarketCap": 1000000,
+    "minLiquidityUsd": 100000,
+    "minVolumeH24": 100000,
+    "limit": 30
+  },
+  "candidates": [],
+  "warnings": []
+}

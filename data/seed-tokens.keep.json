@@ -1,0 +1,44 @@
+[
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+    "label": "PEPE",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xe76C6c83af64e4C60245D8C7dE953DF673a7A33D",
+    "label": "RAIL",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0xf280B16EF293D8e534e370794ef26bF312694126",
+    "label": "ASTEROID",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x8De39B057CC6522230AB19C0205080a8663331Ef",
+    "label": "wojak",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed: produced early buyers"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x0000000000c5dc95539589fbD24BE07c6C14eCa4",
+    "label": "CULT",
+    "narrative": "ethereum_meme",
+    "notes": "Keep seed but may need stable RPC"
+  },
+  {
+    "chain": "base",
+    "tokenAddress": "0x532f27101965dd16442E59d40670FaF5eBB142E4",
+    "label": "BRETT",
+    "narrative": "base_meme",
+    "notes": "Keep seed: produced early buyers"
+  }
+]

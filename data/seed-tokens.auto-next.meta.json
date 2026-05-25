@@ -1,0 +1,450 @@
+{
+  "generatedAt": "2026-05-24T20:05:02.928Z",
+  "basePath": "data/seed-tokens.keep.json",
+  "outPath": "data/seed-tokens.auto-next.json",
+  "targetCount": 30,
+  "chains": [
+    "ethereum",
+    "base",
+    "bsc"
+  ],
+  "profileOrder": [
+    "strict",
+    "moderate",
+    "loose"
+  ],
+  "profileFilters": {
+    "strict": {
+      "minMarketCap": 1000000,
+      "minLiquidityUsd": 100000,
+      "minVolumeH24": 100000,
+      "minPriceChangeH24": 0
+    },
+    "moderate": {
+      "minMarketCap": 250000,
+      "minLiquidityUsd": 25000,
+      "minVolumeH24": 25000,
+      "minPriceChangeH24": -25
+    },
+    "loose": {
+      "minMarketCap": 50000,
+      "minLiquidityUsd": 10000,
+      "minVolumeH24": 5000,
+      "minPriceChangeH24": -50
+    }
+  },
+  "autoDiscoveredCount": 30,
+  "discoveredFromProfilesCount": 0,
+  "discoveredFromSearchQueriesCount": 30,
+  "baseSeedCount": 6,
+  "finalSeedCount": 36,
+  "includeQueryDiscovery": true,
+  "queryDiagnostics": {
+    "queryCount": 48,
+    "queriesUsed": [
+      "pepe",
+      "wojak",
+      "cult",
+      "mog",
+      "turbo",
+      "neiro",
+      "dog",
+      "doge",
+      "shib",
+      "floki",
+      "bonk",
+      "cat",
+      "popcat",
+      "michi",
+      "frog",
+      "kek",
+      "maga",
+      "trump",
+      "ai",
+      "agent",
+      "agents",
+      "virtual",
+      "aixbt",
+      "goat",
+      "act",
+      "fartcoin",
+      "based",
+      "base",
+      "degen",
+      "toshi",
+      "brett",
+      "mfer",
+      "higher",
+      "moon",
+      "meme",
+      "eth meme",
+      "base meme",
+      "bsc meme",
+      "100x",
+      "banana",
+      "terminal",
+      "zerebro",
+      "ghibli",
+      "spx",
+      "gigachad",
+      "chill",
+      "pnut",
+      "moodeng"
+    ],
+    "rawResultsPerQuery": {
+      "pepe": 30,
+      "wojak": 30,
+      "cult": 30,
+      "mog": 30,
+      "turbo": 30,
+      "neiro": 30,
+      "dog": 30,
+      "doge": 30,
+      "shib": 30,
+      "floki": 30,
+      "bonk": 30,
+      "cat": 30,
+      "popcat": 30,
+      "michi": 23,
+      "frog": 30,
+      "kek": 30,
+      "maga": 30,
+      "trump": 30,
+      "ai": 30,
+      "agent": 30,
+      "agents": 30,
+      "virtual": 30,
+      "aixbt": 30,
+      "goat": 30,
+      "act": 30,
+      "fartcoin": 30,
+      "based": 30,
+      "base": 30,
+      "degen": 30,
+      "toshi": 30,
+      "brett": 30,
+      "mfer": 30,
+      "higher": 30,
+      "moon": 30,
+      "meme": 30,
+      "eth meme": 30,
+      "base meme": 30,
+      "bsc meme": 30,
+      "100x": 30,
+      "banana": 30
+    },
+    "candidatesAfterNormalization": 335,
+    "candidatesAfterFilters": 30,
+    "candidatesAccepted": 30,
+    "skippedReasons": {
+      "below_staged_filters": 184,
+      "duplicate_base_seed": 12,
+      "duplicate_generated": 76,
+      "low_liquidity": 24,
+      "missing_market_cap_or_fdv": 1
+    }
+  },
+  "warnings": [],
+  "discoveredFromProfiles": [
+    {
+      "profile": "loose",
+      "chain": "ethereum",
+      "tokenAddress": "0xcf0c122c6b73ff809c693db761e7baebe62b6a2e",
+      "symbol": "FLOKI",
+      "score": 357.58586899,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "ethereum",
+      "tokenAddress": "0xaaee1a9723aadb7afa2810263653a34ba2c21c7a",
+      "symbol": "Mog",
+      "score": 106.92892948000001,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "ethereum",
+      "tokenAddress": "0xa35923162c49cf95e6bf26623385eb431ad920d3",
+      "symbol": "TURBO",
+      "score": 78.43049344999999,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "ethereum",
+      "tokenAddress": "0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee",
+      "symbol": "Neiro",
+      "score": 72.57028344,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "ethereum",
+      "tokenAddress": "0x4d7078ddd6ccfed2f85db5b7d3ff16828d378d48",
+      "symbol": "AI",
+      "score": 59.02915994,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "ethereum",
+      "tokenAddress": "0x38e68a37e401f7271568cecaac63c6b1e19130b4",
+      "symbol": "BANANA",
+      "score": 43.27695156,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "base",
+      "tokenAddress": "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b",
+      "symbol": "VIRTUAL",
+      "score": 513.94306574,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "base",
+      "tokenAddress": "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4",
+      "symbol": "TOSHI",
+      "score": 77.93877009,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "base",
+      "tokenAddress": "0x4ed4e862860bed51a9570b96d89af5e1b0efefed",
+      "symbol": "DEGEN",
+      "score": 43.11959351,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "base",
+      "tokenAddress": "0x4f9fd6be4a90f2620860d680c0d4d5fb53d1a825",
+      "symbol": "AIXBT",
+      "score": 32.93077606,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "base",
+      "tokenAddress": "0xfca95aeb5bf44ae355806a5ad14659c940dc6bf7",
+      "symbol": "SHIB",
+      "score": 4.80336148,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "base",
+      "tokenAddress": "0xb69bbb15095c0949489fbb43951d2b750fa7fa89",
+      "symbol": "DEXTF",
+      "score": 4.397328180000001,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "base",
+      "tokenAddress": "0x5f09821cbb61e09d2a83124ae0b56aaa3ae85b07",
+      "symbol": "DOTA",
+      "score": 1.5314821600000004,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "base",
+      "tokenAddress": "0x7b44fe95c1350caace733c23db7f820887f8ed6c",
+      "symbol": "agent",
+      "score": 1.1460233000000002,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "base",
+      "tokenAddress": "0x4160efdd66521483c22cb98b57b87d1fdafeab07",
+      "symbol": "MFERGPT",
+      "score": 0.8695337599999999,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "base",
+      "tokenAddress": "0x0578d8a44db98b23bf096a382e016e29a5ce0ffe",
+      "symbol": "HIGHER",
+      "score": 0.65921563,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "bsc",
+      "tokenAddress": "0x22b1458e780f8fa71e2f84502cee8b5a3cc731fa",
+      "symbol": "M",
+      "score": 3779.19994072,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0xfb5b838b6cfeedc2873ab27866079ac55363d37e",
+      "symbol": "FLOKI",
+      "score": 375.04571156,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0xba2ae424d960c26247dd6c32edc70b295c744c43",
+      "symbol": "DOGE",
+      "score": 264.35542207000003,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "strict",
+      "chain": "bsc",
+      "tokenAddress": "0x9daf1a070f882d870a8d58d7a27041c752f3b88d",
+      "symbol": "MHORSE",
+      "score": 84.28409847,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0x6a2608dabe09bc1128eec7275b92dfb939d5db3f",
+      "symbol": "TOSHI",
+      "score": 71.38944851,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "bsc",
+      "tokenAddress": "0x2859e4544c4bb03966803b044a93563bd2d0dd4d",
+      "symbol": "SHIB",
+      "score": 55.11165758,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "bsc",
+      "tokenAddress": "0x4206931337dc273a630d328da6441786bfad668f",
+      "symbol": "DOGE",
+      "score": 29.879880250000006,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0x6894cde390a3f51155ea41ed24a33a4827d3063d",
+      "symbol": "CAT",
+      "score": 17.00771458,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0x9f3bcbe48e8b754f331dfc694a894e8e686ac31d",
+      "symbol": "ACT",
+      "score": 8.011182040000001,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0xa7440029eca41deabd8775ef1d6086b37d4df8d6",
+      "symbol": "BRETT",
+      "score": 4.37969718,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "moderate",
+      "chain": "bsc",
+      "tokenAddress": "0x25d887ce7a35172c62febfd67a1856f20faebb00",
+      "symbol": "PEPE",
+      "score": 3.21451465,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "bsc",
+      "tokenAddress": "0xf43c8f27754829202d2f66650eb3f6d168c288dc",
+      "symbol": "PEPE",
+      "score": 2.96979365,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "bsc",
+      "tokenAddress": "0xf74548802f4c700315f019fde17178b392ee4444",
+      "symbol": "memes",
+      "score": 1.51037015,
+      "source": [
+        "search_queries"
+      ]
+    },
+    {
+      "profile": "loose",
+      "chain": "bsc",
+      "tokenAddress": "0x1eb55169c045dd91ac47a0c3af2fb1df93064444",
+      "symbol": "Moon",
+      "score": 0.34184176,
+      "source": [
+        "search_queries"
+      ]
+    }
+  ]
+}

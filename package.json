@@ -1,0 +1,45 @@
+{
+  "name": "smartbot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "analyze:token": "tsx src/cli/analyze-token.ts",
+    "analyze:wallet": "tsx src/cli/analyze-wallet.ts",
+    "analyze:seed-batch": "tsx src/cli/analyze-seed-batch.ts",
+    "discover:seeds": "tsx src/cli/discover-seed-tokens.ts",
+    "seeds:normalize": "tsx src/cli/normalize-seeds.ts",
+    "seeds:merge": "tsx src/cli/merge-seeds.ts",
+    "seeds:auto-expand": "tsx src/cli/auto-expand-seeds.ts",
+    "discovery:auto-run": "tsx src/cli/auto-run-discovery.ts",
+    "discovery:auto": "tsx src/cli/auto-discovery.ts",
+    "monitor:import-candidates": "tsx src/cli/import-monitor-candidates.ts",
+    "monitor:poll": "tsx src/cli/monitor-poll.ts",
+    "monitor:build-known-tokens": "tsx src/cli/build-monitor-known-tokens.ts",
+    "monitor:latest": "tsx src/cli/monitor-latest.ts",
+    "bot:start": "tsx src/bot/start-bot.ts",
+    "worker:monitor": "tsx src/worker/monitor-worker.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "decimal.js": "^10.6.0",
+    "dotenv": "^17.4.2",
+    "pino": "^9.4.0",
+    "telegraf": "^4.16.3",
+    "viem": "^2.50.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.1"
+  }
+}

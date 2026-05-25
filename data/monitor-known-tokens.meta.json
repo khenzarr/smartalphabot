@@ -1,0 +1,7 @@
+{
+  "seedSummary": "output/seed-batch-auto-keep-wide-v1/token-buyer-summary.csv",
+  "out": "data/monitor-known-tokens.json",
+  "onlyKeep": true,
+  "tokenCount": 8,
+  "generatedAt": "2026-05-25T02:54:43.917Z"
+}

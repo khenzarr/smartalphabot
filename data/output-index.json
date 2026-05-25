@@ -1,0 +1,8 @@
+{
+  "generatedAt": "2026-05-24T00:59:43.914Z",
+  "commandType": "seed_discovery",
+  "files": {
+    "seedTokensJson": "data/seed-tokens.generated.json",
+    "seedTokensMetaJson": "data/seed-tokens.generated.meta.json"
+  }
+}

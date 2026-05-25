@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+output/
+data/*.local.json
+data/monitor-sent-signals.local.json
+data/telegram-chats.local.json

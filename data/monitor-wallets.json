@@ -1,0 +1,328 @@
+[
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x74de5d4fcbf63e00296fd95d33236b9794016631",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 4,
+    "tokensAppearedIn": [
+      "PEPE",
+      "RAIL",
+      "ETHEREUM_FLOKI",
+      "ETHEREUM_TURBO"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 45.5,
+    "bestFirstBuyRank": 9,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x00000000a991c429ee2ec6df19d40fe0c80088b8",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 3,
+    "tokensAppearedIn": [
+      "PEPE",
+      "ETHEREUM_Mog",
+      "ETHEREUM_TURBO"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 141.3333,
+    "bestFirstBuyRank": 98,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "base",
+    "walletAddress": "0x11ddd59c33c73c44733b4123a86ea5ce57f6e854",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 3,
+    "tokensAppearedIn": [
+      "BRETT",
+      "BASE_AIXBT",
+      "BASE_HIGHER"
+    ],
+    "narratives": [
+      "base_meme",
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 4,
+    "bestFirstBuyRank": 1,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "base",
+    "walletAddress": "0x7161f940d3ca88e4035d7b7fbde2a2870d176f87",
+    "score": 40,
+    "category": "rejected",
+    "tokenAppearances": 3,
+    "tokensAppearedIn": [
+      "BRETT",
+      "BASE_AIXBT",
+      "BASE_HIGHER"
+    ],
+    "narratives": [
+      "base_meme",
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 45.6667,
+    "bestFirstBuyRank": 2,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x00000000003b3cc22af3ae1eac0440bcee416b40",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 2,
+    "tokensAppearedIn": [
+      "RAIL",
+      "ETHEREUM_TURBO"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 49,
+    "bestFirstBuyRank": 2,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "base",
+    "walletAddress": "0x1111111254eeb25477b68fb85ed929f73a960582",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 2,
+    "tokensAppearedIn": [
+      "BRETT",
+      "BASE_HIGHER"
+    ],
+    "narratives": [
+      "base_meme",
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 71.5,
+    "bestFirstBuyRank": 34,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x555b6ee8fab3dfdbcca9121721c435fd4c7a1fd1",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 2,
+    "tokensAppearedIn": [
+      "PEPE",
+      "ETHEREUM_TURBO"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 53.5,
+    "bestFirstBuyRank": 5,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x6b75d8af000000e20b7a7ddf000ba900b4009a80",
+    "score": 55,
+    "category": "rejected",
+    "tokenAppearances": 2,
+    "tokensAppearedIn": [
+      "PEPE",
+      "ETHEREUM_Mog"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 103.5,
+    "bestFirstBuyRank": 90,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "adequate_sample_size",
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x000000000005af2ddc1a93a03e9b7014064d3b8d",
+    "score": 40,
+    "category": "rejected",
+    "tokenAppearances": 2,
+    "tokensAppearedIn": [
+      "PEPE",
+      "ETHEREUM_Mog"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 153,
+    "bestFirstBuyRank": 128,
+    "monitorRecommendation": "investigate_high_activity",
+    "reasons": [
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "base",
+    "walletAddress": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+    "score": 40,
+    "category": "rejected",
+    "tokenAppearances": 3,
+    "tokensAppearedIn": [
+      "BRETT",
+      "BASE_AIXBT",
+      "BASE_HIGHER"
+    ],
+    "narratives": [
+      "base_meme",
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 90.3333,
+    "bestFirstBuyRank": 20,
+    "monitorRecommendation": "watch_after_pnl_enrichment",
+    "reasons": [
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  },
+  {
+    "chain": "ethereum",
+    "walletAddress": "0x22f9dcf4647084d6c31b2765f6910cd85c178c18",
+    "score": 40,
+    "category": "rejected",
+    "tokenAppearances": 3,
+    "tokensAppearedIn": [
+      "RAIL",
+      "ETHEREUM_FLOKI",
+      "ETHEREUM_TURBO"
+    ],
+    "narratives": [
+      "ethereum_meme"
+    ],
+    "averageFirstBuyRank": 97.6667,
+    "bestFirstBuyRank": 50,
+    "monitorRecommendation": "watch_after_pnl_enrichment",
+    "reasons": [
+      "seed_batch_early_entry_evidence_only_not_realized_pnl"
+    ],
+    "riskFlags": [],
+    "source": "candidate_shortlist",
+    "importedAt": "2026-05-24T22:17:44.402Z",
+    "enabled": true,
+    "tags": [
+      "seed_batch_candidate",
+      "rejected"
+    ]
+  }
+]
