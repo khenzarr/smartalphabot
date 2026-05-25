@@ -7,6 +7,7 @@ const schema = z.object({
   DATABASE_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_DEFAULT_CHAT_ID: z.string().optional(),
+  TELEGRAM_SHOW_TRADE_PLACEHOLDER_BUTTONS: z.coerce.boolean().default(false),
   ETHEREUM_RPC_URL: z.string().optional(),
   BASE_RPC_URL: z.string().optional(),
   BSC_RPC_URL: z.string().optional(),

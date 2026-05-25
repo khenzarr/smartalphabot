@@ -194,11 +194,18 @@ export type MonitorSignalCategory = 'strong_signal' | 'watch_signal' | 'weak_sig
 
 export interface MonitorSignal {
   chain: EvmSupportedChain;
+  tokenSymbol?: string;
+  tokenName?: string;
   tokenAddress: string;
   symbol?: string;
   name?: string;
+  marketCapUsd?: number;
+  tokenAge?: number;
+  priceUsd?: number;
+  smartWalletCount?: number;
   watchedWalletCount: number;
   watchedWallets: string[];
+  walletScores?: number[];
   firstSeenAt: string;
   latestSeenAt: string;
   txCount: number;
@@ -206,11 +213,17 @@ export interface MonitorSignal {
   marketCap?: number;
   liquidityUsd?: number;
   tokenAgeSeconds?: number;
+  totalAmountNative?: number;
+  totalAmountUsd?: number;
   warnings: string[];
   score: number;
   category: MonitorSignalCategory;
   reasons: string[];
+  riskFlags?: string[];
+  dexScreenerUrl?: string;
   dexUrl?: string;
+  explorerUrl?: string;
+  xSearchUrl?: string;
   likelyActivityType: LikelyActivityType;
   confidence: TransactionContextConfidence;
   knownRouterSeen: boolean;

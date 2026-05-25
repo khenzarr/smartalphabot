@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf';
 import type { MonitorSignal, MonitorSignalCategory } from '../monitoring/monitoring.types.js';
 import { env } from '../config/env.js';
-import { formatMonitorSignalMessage } from './messages/monitor-signal-message.js';
+import { buildSignalInlineKeyboard, formatMonitorSignalMessage } from './messages/monitor-signal-message.js';
 import { listEnabledTelegramChats, type TelegramChatRecord } from './telegram-chat-state.js';
 
 const CATEGORY_RANK: Record<MonitorSignalCategory, number> = {
@@ -60,7 +60,9 @@ export async function sendSignalsToChats(input: {
   let sent = 0;
   for (const [chat, signals] of eligibleByChat.entries()) {
     for (const signal of signals) {
-      await bot.telegram.sendMessage(chat.chatId, formatMonitorSignalMessage(signal));
+      await bot.telegram.sendMessage(chat.chatId, formatMonitorSignalMessage(signal), {
+        reply_markup: buildSignalInlineKeyboard(signal),
+      });
       sent += 1;
       await new Promise((resolve) => setTimeout(resolve, sleepMs));
     }

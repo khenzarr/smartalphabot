@@ -12,8 +12,14 @@ describe('telegram menu command registration', () => {
     expect(PRODUCT_MENU_COMMANDS.map((x) => x.command)).toEqual([
       'start',
       'status',
+      'admin_status',
       'signals',
       'watchlist',
+      'review',
+      'promote',
+      'reject',
+      'monitor_now',
+      'discovery_now',
       'alpha_wallet_ekle',
       'cancel',
       'help',
@@ -93,12 +99,14 @@ describe('telegram conversational alpha wallet flow', () => {
     process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
 
     const commandHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
+    const actionHandlers: Array<{ pattern: RegExp; handler: (ctx: any) => Promise<void> | void }> = [];
     let textHandler: ((ctx: any) => Promise<void> | void) | undefined;
 
     class TelegrafMock {
       telegram = { setMyCommands: vi.fn().mockResolvedValue(undefined) };
       start(handler: any) { commandHandlers.set('start', handler); }
       command(name: string, handler: any) { commandHandlers.set(name, handler); }
+      action(pattern: RegExp, handler: any) { actionHandlers.push({ pattern, handler }); }
       on(event: string, handler: any) { if (event === 'text') textHandler = handler; }
       launch = vi.fn().mockResolvedValue(undefined);
       stop = vi.fn();
@@ -111,6 +119,7 @@ describe('telegram conversational alpha wallet flow', () => {
 
     expect(commandHandlers.has('alpha_wallet_ekle')).toBe(true);
     expect(commandHandlers.has('cancel')).toBe(true);
+    expect(actionHandlers.length).toBeGreaterThan(0);
     expect(textHandler).toBeTypeOf('function');
 
     const replies: string[] = [];
@@ -146,6 +155,102 @@ describe('telegram conversational alpha wallet flow', () => {
 
     await commandHandlers.get('alpha_wallet_ekle')!(makeCtx(`/alpha_wallet_ekle ${validAddress}`));
     expect(replies.at(-1)).toContain('already exists');
+
+    const cbReplies: string[] = [];
+    const cbCtx = {
+      answerCbQuery: async (msg: string) => { cbReplies.push(msg); },
+    };
+    const tradeAction = actionHandlers.find((x) => x.pattern.test('trade_placeholder_0.01'));
+    expect(tradeAction).toBeDefined();
+    await tradeAction!.handler(cbCtx);
+    expect(cbReplies.at(-1)).toContain('Trading is not enabled yet.');
+  });
+});
+
+describe('telegram admin command outputs', () => {
+  it('review includes top candidates and watch candidates count', async () => {
+    vi.resetModules();
+    const tmpDir = path.join('output', 'test-telegram-review-output');
+    await mkdir(tmpDir, { recursive: true });
+    const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
+    await writeFile(reviewPath, JSON.stringify([
+      {
+        chain: 'base', walletAddress: '0x1111111111111111111111111111111111111111', source: 'telegram_manual',
+        addedAt: new Date().toISOString(), status: 'high_confidence', category: 'high_confidence', score: 91, tags: [], reasons: ['roi', 'overlap'],
+      },
+      {
+        chain: 'base', walletAddress: '0x2222222222222222222222222222222222222222', source: 'telegram_manual',
+        addedAt: new Date().toISOString(), status: 'needs_review', category: 'watch_candidate', score: 70, tags: [], reasons: ['activity'],
+      },
+    ], null, 2), 'utf8');
+    process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
+
+    const commandHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
+    class TelegrafMock {
+      telegram = { setMyCommands: vi.fn().mockResolvedValue(undefined) };
+      start() {}
+      command(name: string, handler: any) { commandHandlers.set(name, handler); }
+      action() {}
+      on() {}
+      launch = vi.fn().mockResolvedValue(undefined);
+      stop = vi.fn();
+    }
+    vi.doMock('telegraf', () => ({ Telegraf: TelegrafMock }));
+    const { createAndStartBot } = await import('../src/bot/start-bot.js');
+    await createAndStartBot();
+
+    const replies: string[] = [];
+    const ctx = { chat: { id: 7 }, message: { text: '/review' }, reply: async (msg: string) => { replies.push(msg); } };
+    await commandHandlers.get('review')!(ctx);
+    expect(replies.at(-1)).toContain('Watch candidates: 1');
+    expect(replies.at(-1)).toContain('Top candidates:');
+  });
+
+  it('promote explains non-eligible candidate and supports force mode', async () => {
+    vi.resetModules();
+    const tmpDir = path.join('output', 'test-telegram-promote-output');
+    await mkdir(tmpDir, { recursive: true });
+    const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
+    const watchlistPath = path.join(tmpDir, 'monitor-wallets.json');
+    await writeFile(watchlistPath, '[]', 'utf8');
+    const wallet = '0x3333333333333333333333333333333333333333';
+    await writeFile(reviewPath, JSON.stringify([
+      {
+        chain: 'base', walletAddress: wallet, source: 'telegram_manual',
+        addedAt: new Date().toISOString(), status: 'needs_review', category: 'needs_review', score: 40,
+        evidenceCount: 0, tokenAppearances: 0, tags: [], reasons: ['low score'],
+      },
+    ], null, 2), 'utf8');
+
+    process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
+    process.env.MONITOR_WATCHLIST_PATH = watchlistPath;
+    process.env.DISCOVERY_AUTO_ADD_MIN_SCORE = '70';
+
+    const commandHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
+    class TelegrafMock {
+      telegram = { setMyCommands: vi.fn().mockResolvedValue(undefined) };
+      start() {}
+      command(name: string, handler: any) { commandHandlers.set(name, handler); }
+      action() {}
+      on() {}
+      launch = vi.fn().mockResolvedValue(undefined);
+      stop = vi.fn();
+    }
+    vi.doMock('telegraf', () => ({ Telegraf: TelegrafMock }));
+    const { createAndStartBot } = await import('../src/bot/start-bot.js');
+    await createAndStartBot();
+
+    const replies: string[] = [];
+    const ctx1 = { chat: { id: 8 }, message: { text: `/promote ${wallet}` }, reply: async (msg: string) => { replies.push(msg); } };
+    await commandHandlers.get('promote')!(ctx1);
+    expect(replies.at(-1)).toContain('Not eligible for promotion');
+
+    const ctx2 = { chat: { id: 8 }, message: { text: `/promote ${wallet} force` }, reply: async (msg: string) => { replies.push(msg); } };
+    await commandHandlers.get('promote')!(ctx2);
+    expect(replies.at(-1)).toContain('Added to monitor list only (no trading)');
+
+    const watchlist = JSON.parse(await readFile(watchlistPath, 'utf8')) as Array<{ walletAddress: string }>;
+    expect(watchlist.some((x) => x.walletAddress === wallet)).toBe(true);
   });
 });
 

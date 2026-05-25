@@ -7,7 +7,7 @@ import { buildKnownTokens } from '../src/cli/build-monitor-known-tokens.js';
 import { scanRecentWalletActivity } from '../src/monitoring/recent-wallet-activity.js';
 import { buildSignals, buildSignalsWithStats } from '../src/monitoring/signal-builder.js';
 import { buildSignalDedupeKey } from '../src/monitoring/dedupe.js';
-import { formatMonitorSignalMessage } from '../src/bot/messages/monitor-signal-message.js';
+import { buildSignalInlineKeyboard, formatMonitorSignalMessage } from '../src/bot/messages/monitor-signal-message.js';
 import { runMonitorPoll } from '../src/cli/monitor-poll.js';
 import {
   ExplorerTokenTransferProvider,
@@ -297,7 +297,7 @@ describe('monitoring MVP', () => {
     expect(key1).toBe(key2);
   });
 
-  it('formats telegram dry-run signal message', () => {
+  it('formats strong signal production telegram card', () => {
     const msg = formatMonitorSignalMessage({
       chain: 'base', tokenAddress: '0xabc', symbol: 'NEW', name: 'New Token', watchedWalletCount: 2,
       watchedWallets: ['0x0000000000000000000000000000000000000001', '0x0000000000000000000000000000000000000002'],
@@ -316,13 +316,14 @@ describe('monitoring MVP', () => {
       knownRouterEventCount: 2,
       contextComposition: { likely_buy: 2, transfer: 1, airdrop_or_claim: 0, unknown: 0 },
     });
-    expect(msg).toContain('watched wallet token activity');
-    expect(msg).toContain('Activity: likely buy (high confidence)');
-    expect(msg).toContain('Router Evidence: seen');
+    expect(msg).toContain('🟢 BUY SIGNAL 🔁 UPDATE #Base');
+    expect(msg).toContain('👥 Smart Wallets: 2');
+    expect(msg).toContain('💎 Token: New Token');
+    expect(msg).toContain('🔗 CA: 0xabc');
     expect(msg).toContain('Manual review required');
   });
 
-  it('formats mixed activity warning text in telegram dry-run message', () => {
+  it('formats watch signal card', () => {
     const msg = formatMonitorSignalMessage({
       chain: 'base', tokenAddress: '0xmix', symbol: 'MIX', name: 'Mixed Token', watchedWalletCount: 2,
       watchedWallets: ['0x0000000000000000000000000000000000000001', '0x0000000000000000000000000000000000000002'],
@@ -341,9 +342,66 @@ describe('monitoring MVP', () => {
       knownRouterEventCount: 1,
       contextComposition: { likely_buy: 1, transfer: 1, airdrop_or_claim: 2, unknown: 0 },
     });
-    expect(msg).toContain('Mixed watched-wallet token activity');
-    expect(msg).toContain('Some txs look like likely buys, but others look like transfers/claims');
+    expect(msg).toContain('🟡 WATCH SIGNAL #Base');
     expect(msg).toContain('Manual review required');
+  });
+
+  it('formats high activity weak signal card', () => {
+    const msg = formatMonitorSignalMessage({
+      chain: 'base', tokenAddress: '0xwhale', symbol: 'WHALE', name: 'Whale Token', watchedWalletCount: 1,
+      watchedWallets: ['0x1'], firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1,
+      marketCap: 2_000_000, liquidityUsd: 300_000, tokenAgeSeconds: 3600, warnings: [], score: 30, category: 'weak_signal', reasons: ['large_buy'],
+      likelyActivityType: 'likely_buy', confidence: 'medium', knownRouterSeen: true,
+      totalAmountNative: 7,
+      contextEventCount: 1, likelyBuyEventCount: 1, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 0,
+      highConfidenceEventCount: 0, mediumConfidenceEventCount: 1, lowConfidenceEventCount: 0, knownRouterEventCount: 1,
+      contextComposition: { likely_buy: 1 },
+    });
+    expect(msg).toContain('🐋 HIGH ACTIVITY #Base');
+    expect(msg).toContain('Big-money buy detected');
+  });
+
+  it('uses n/a for missing fields', () => {
+    const msg = formatMonitorSignalMessage({
+      chain: 'base', tokenAddress: '0xna', watchedWalletCount: 1, watchedWallets: ['0x1'],
+      firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1, warnings: [], score: 10, category: 'watch_signal', reasons: [],
+      likelyActivityType: 'unknown', confidence: 'low', knownRouterSeen: false,
+      contextEventCount: 1, likelyBuyEventCount: 0, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 1,
+      highConfidenceEventCount: 0, mediumConfidenceEventCount: 0, lowConfidenceEventCount: 1, knownRouterEventCount: 0,
+      contextComposition: { unknown: 1 },
+    });
+    expect(msg).toContain('MCAP: n/a');
+    expect(msg).toContain('Liquidity: n/a');
+    expect(msg).toContain('Price: n/a');
+  });
+
+  it('builds inline buttons with chart/explorer/x search', () => {
+    const keyboard = buildSignalInlineKeyboard({
+      chain: 'base', tokenAddress: '0xabc', watchedWalletCount: 1, watchedWallets: ['0x1'],
+      firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1, warnings: [], score: 60, category: 'watch_signal', reasons: [],
+      likelyActivityType: 'likely_buy', confidence: 'high', knownRouterSeen: true,
+      contextEventCount: 1, likelyBuyEventCount: 1, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 0,
+      highConfidenceEventCount: 1, mediumConfidenceEventCount: 0, lowConfidenceEventCount: 0, knownRouterEventCount: 1,
+      contextComposition: { likely_buy: 1 },
+      dexUrl: 'https://dexscreener.com/base/0xabc',
+      explorerUrl: 'https://basescan.org/address/0xabc',
+      xSearchUrl: 'https://x.com/search?q=0xabc',
+    });
+    expect(JSON.stringify(keyboard)).toContain('📊 Chart');
+    expect(JSON.stringify(keyboard)).toContain('🔍 Explorer');
+    expect(JSON.stringify(keyboard)).toContain('𝕏 Search');
+  });
+
+  it('hides trade placeholder buttons by default', () => {
+    const keyboard = buildSignalInlineKeyboard({
+      chain: 'base', tokenAddress: '0xabc', watchedWalletCount: 1, watchedWallets: ['0x1'],
+      firstSeenAt: '', latestSeenAt: '', txCount: 1, uniqueTxCount: 1, warnings: [], score: 60, category: 'watch_signal', reasons: [],
+      likelyActivityType: 'likely_buy', confidence: 'high', knownRouterSeen: true,
+      contextEventCount: 1, likelyBuyEventCount: 1, transferEventCount: 0, airdropOrClaimEventCount: 0, contractInteractionEventCount: 0, unknownEventCount: 0,
+      highConfidenceEventCount: 1, mediumConfidenceEventCount: 0, lowConfidenceEventCount: 0, knownRouterEventCount: 1,
+      contextComposition: { likely_buy: 1 },
+    });
+    expect(JSON.stringify(keyboard)).not.toContain('trade_placeholder_');
   });
 
   it('writes monitor poll outputs with mocked deps and dry-run flow', async () => {

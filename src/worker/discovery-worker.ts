@@ -2,7 +2,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { env } from '../config/env.js';
-import { getAlphaWalletReviewEntries, upsertAlphaWalletReviewEntry } from '../discovery/alpha-wallet-review-store.js';
+import { bulkMergeAlphaWalletReviewEntries, getAlphaWalletReviewEntries, upsertAlphaWalletReviewEntry } from '../discovery/alpha-wallet-review-store.js';
+import { loadDiscoveryCandidates, mapCategoryToStatus, writeDiscoveryOutputs } from '../discovery/discovery-candidate-engine.js';
 
 function parseFlag(name: string, fallback = false): boolean {
   const i = process.argv.indexOf(`--${name}`);
@@ -30,8 +31,33 @@ export async function executeDiscoveryWorkerRun(options: { now?: Date; dryRun?: 
   const watchlist = await readJsonSafe<Array<{ chain?: string; walletAddress?: string; score?: number }>>(env.MONITOR_WATCHLIST_PATH, []);
   const reviewQueue = await getAlphaWalletReviewEntries();
 
-  const highConfidence = reviewQueue
-    .filter((x) => (x.score ?? 0) >= env.DISCOVERY_AUTO_ADD_MIN_SCORE && x.status !== 'rejected')
+  const loaded = await loadDiscoveryCandidates({ now, monitorWalletPath: env.MONITOR_WATCHLIST_PATH, reviewEntries: reviewQueue });
+
+  await bulkMergeAlphaWalletReviewEntries({
+    candidates: loaded.candidates.map((c) => ({
+      chain: c.chain,
+      walletAddress: c.walletAddress,
+      source: 'discovery_worker',
+      status: mapCategoryToStatus(c.category),
+      category: c.category,
+      score: c.score,
+      evidenceCount: c.evidenceCount,
+      tokenAppearances: c.tokenAppearances,
+      bestFirstBuyRank: c.bestFirstBuyRank,
+      averageFirstBuyRank: c.averageFirstBuyRank,
+      knownProfitableSeedCount: c.knownProfitableSeedCount,
+      warningCount: c.warningCount,
+      riskFlags: c.riskFlags,
+      reasons: c.reasons,
+      firstSeenAt: c.firstSeenAt,
+      tags: ['discovery-worker', c.source],
+    })),
+  });
+
+  const mergedReviewQueue = await getAlphaWalletReviewEntries();
+
+  const highConfidence = mergedReviewQueue
+    .filter((x) => (x.score ?? 0) >= env.DISCOVERY_AUTO_ADD_MIN_SCORE && x.status !== 'rejected' && x.status !== 'monitoring')
     .slice(0, env.DISCOVERY_MAX_NEW_WALLETS_PER_RUN);
 
   const autoAddEnabled = env.DISCOVERY_AUTO_ADD && !dryRun;
@@ -53,19 +79,40 @@ export async function executeDiscoveryWorkerRun(options: { now?: Date; dryRun?: 
   const summary = {
     runAt: now.toISOString(),
     dryRun,
+    sourcesUsed: loaded.sourcesUsed,
+    candidatesLoaded: loaded.loaded,
+    candidatesAfterDedupe: loaded.candidates.length,
+    highConfidenceCount: loaded.candidates.filter((c) => c.category === 'high_confidence').length,
+    watchCandidateCount: loaded.candidates.filter((c) => c.category === 'watch_candidate').length,
+    needsReviewCount: loaded.candidates.filter((c) => c.category === 'needs_review').length,
+    rejectedCount: loaded.candidates.filter((c) => c.category === 'rejected').length,
     autoAddEnabled,
-    watchlistWalletCount: watchlist.length,
-    alphaReviewQueueCount: reviewQueue.length,
-    highConfidenceCandidates: highConfidence.length,
     autoAddedCount,
+    reviewQueueCount: mergedReviewQueue.length,
+    monitoredWalletCount: watchlist.length,
+    warnings: loaded.warnings,
+    outputDir: runDir,
     maxNewWalletsPerRun: env.DISCOVERY_MAX_NEW_WALLETS_PER_RUN,
     autoAddMinScore: env.DISCOVERY_AUTO_ADD_MIN_SCORE,
+    thresholdUsed: env.DISCOVERY_AUTO_ADD_MIN_SCORE,
+    topCandidates: loaded.candidates.slice(0, 5).map((c) => ({
+      chain: c.chain,
+      walletAddress: c.walletAddress,
+      score: c.score,
+      category: c.category,
+      reasons: c.reasons.slice(0, 3),
+      alreadyMonitored: watchlist.some((w) => `${(w.chain ?? '').toLowerCase()}:${(w.walletAddress ?? '').toLowerCase()}` === `${c.chain}:${c.walletAddress}`),
+      rejected: mergedReviewQueue.some((x) => x.chain.toLowerCase() === c.chain && x.walletAddress.toLowerCase() === c.walletAddress && x.status === 'rejected'),
+      missingEvidence: (c.evidenceCount ?? 0) <= 0 && (c.tokenAppearances ?? 0) <= 0,
+    })),
   };
 
-  await mkdir(runDir, { recursive: true });
-  await writeFile(path.join(runDir, 'discovery-summary.json'), JSON.stringify(summary, null, 2), 'utf8');
-  await mkdir(env.DISCOVERY_OUTPUT_DIR, { recursive: true });
-  await writeFile(path.join(env.DISCOVERY_OUTPUT_DIR, 'latest-summary.json'), JSON.stringify({ ...summary, runDir }, null, 2), 'utf8');
+  await writeDiscoveryOutputs({
+    runDir,
+    outputDir: env.DISCOVERY_OUTPUT_DIR,
+    summary,
+    candidates: loaded.candidates,
+  });
   return summary;
 }
 
@@ -88,7 +135,7 @@ export async function startDiscoveryWorker() {
 
   do {
     const summary = await executeDiscoveryWorkerRun({ dryRun });
-    console.log(`[discovery-worker] queue=${summary.alphaReviewQueueCount} highConfidence=${summary.highConfidenceCandidates} autoAdded=${summary.autoAddedCount}`);
+    console.log(`[discovery-worker] queue=${summary.reviewQueueCount} highConfidence=${summary.highConfidenceCount} autoAdded=${summary.autoAddedCount}`);
     if (once || stopped) break;
     await new Promise((resolve) => setTimeout(resolve, env.DISCOVERY_INTERVAL_SECONDS * 1000));
   } while (!stopped);

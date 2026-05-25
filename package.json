@@ -24,6 +24,7 @@
     "monitor:build-known-tokens": "tsx src/cli/build-monitor-known-tokens.ts",
     "monitor:latest": "tsx src/cli/monitor-latest.ts",
     "discovery:latest": "tsx src/cli/discovery-latest.ts",
+    "alpha:promote": "tsx src/discovery/promote-alpha-wallets.ts",
     "bot:start": "tsx src/bot/start-bot.ts",
     "worker:monitor": "tsx src/worker/monitor-worker.ts",
     "worker:discovery": "tsx src/worker/discovery-worker.ts"
