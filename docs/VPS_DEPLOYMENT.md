@@ -43,8 +43,9 @@ Do not implement auto-update yet. Use manual updates:
 git pull
 npm install
 npm run build
-pm2 restart smartbot-worker
 pm2 restart smartbot-telegram
+pm2 restart smartbot-worker
+pm2 restart smartbot-discovery
 ```
 
 ## VPS Setup
@@ -60,14 +61,29 @@ pm2 restart smartbot-telegram
 7. Test one-shot worker.
 8. Start bot and worker with PM2.
 
-## PM2
+## PM2 Process Layout
 
 ```bash
 npm install -g pm2
 pm2 start npm --name smartbot-telegram -- run bot:start
 pm2 start npm --name smartbot-worker -- run worker:monitor
+pm2 start npm --name smartbot-discovery -- run worker:discovery
 pm2 save
-pm2 startup
-pm2 logs smartbot-worker
 pm2 logs smartbot-telegram
+pm2 logs smartbot-worker
+pm2 logs smartbot-discovery
+```
+
+Discovery worker defaults to dry-run / review-queue mode.
+Do not auto-add wallets until scoring quality is trusted in production.
+
+## Update Workflow
+
+```bash
+git pull
+npm install
+npm run build
+pm2 restart smartbot-telegram
+pm2 restart smartbot-worker
+pm2 restart smartbot-discovery
 ```

@@ -39,6 +39,14 @@ const schema = z.object({
   MONITOR_SEND_WEAK: z.coerce.boolean().default(false),
   MONITOR_SEND_IGNORED: z.coerce.boolean().default(false),
   MONITOR_DRY_RUN: z.coerce.boolean().default(false),
+  DISCOVERY_WORKER_ENABLED: z.coerce.boolean().default(true),
+  DISCOVERY_INTERVAL_SECONDS: z.coerce.number().int().positive().default(21600),
+  DISCOVERY_DRY_RUN: z.coerce.boolean().default(true),
+  DISCOVERY_AUTO_ADD: z.coerce.boolean().default(false),
+  DISCOVERY_AUTO_ADD_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(70),
+  DISCOVERY_MAX_NEW_WALLETS_PER_RUN: z.coerce.number().int().positive().default(20),
+  DISCOVERY_OUTPUT_DIR: z.string().default('output/discovery-worker'),
+  ALPHA_WALLET_REVIEW_PATH: z.string().default('data/alpha-wallet-review.local.json'),
 });
 
 export const env = schema.parse(process.env);
