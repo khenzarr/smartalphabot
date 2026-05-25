@@ -15,6 +15,7 @@ describe('telegram menu command registration', () => {
       'signals',
       'watchlist',
       'alpha_wallet_ekle',
+      'cancel',
       'help',
       'copytrade',
       'positions',
@@ -26,10 +27,11 @@ describe('telegram menu command registration', () => {
 });
 
 describe('alpha wallet command', () => {
-  it('returns usage when no args are supplied', async () => {
+  it('returns conversational prompt when no args are supplied', async () => {
     const { handleAlphaWalletEkle } = await import('../src/bot/alpha-wallet-command.js');
     const result = await handleAlphaWalletEkle({ text: '/alpha_wallet_ekle', chatId: '1' });
-    expect(result.message).toContain('Usage: /alpha_wallet_ekle <walletAddress>');
+    expect(result.message).toContain('Send the wallet address you want to add to alpha review.');
+    expect((result as { needsInput?: boolean }).needsInput).toBe(true);
   });
 
   it('writes wallet to review queue and dedupes duplicates', async () => {
@@ -37,6 +39,7 @@ describe('alpha wallet command', () => {
     const tmpDir = path.join('output', 'test-productization-alpha');
     await mkdir(tmpDir, { recursive: true });
     const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
+    await writeFile(reviewPath, '[]', 'utf8');
 
     process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
 
@@ -51,6 +54,98 @@ describe('alpha wallet command', () => {
     const parsed = JSON.parse(await readFile(reviewPath, 'utf8')) as Array<{ walletAddress: string }>;
     expect(parsed).toHaveLength(1);
     expect(parsed[0]?.walletAddress).toBe(address);
+  });
+});
+
+describe('pending input state', () => {
+  it('sets, gets, and clears pending input', async () => {
+    vi.resetModules();
+    const tmpDir = path.join('output', 'test-pending-input-state');
+    await mkdir(tmpDir, { recursive: true });
+    const pendingPath = path.join(tmpDir, 'telegram-pending-inputs.local.json');
+
+    const {
+      setPendingInput,
+      getPendingInput,
+      clearPendingInput,
+    } = await import('../src/bot/pending-input-state.js');
+
+    await setPendingInput('chat-1', 'alpha_wallet_address', undefined, { filePath: pendingPath });
+    const found = await getPendingInput('chat-1', { filePath: pendingPath });
+    expect(found?.type).toBe('alpha_wallet_address');
+
+    await clearPendingInput('chat-1', { filePath: pendingPath });
+    const afterClear = await getPendingInput('chat-1', { filePath: pendingPath });
+    expect(afterClear).toBeUndefined();
+  });
+});
+
+describe('telegram conversational alpha wallet flow', () => {
+  it('handles pending input flow and /cancel through bot handlers', async () => {
+    vi.resetModules();
+    const tmpDir = path.join('output', 'test-telegram-conversation');
+    await mkdir(tmpDir, { recursive: true });
+    const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
+    const pendingPath = path.join('data', 'telegram-pending-inputs.local.json');
+    await writeFile(reviewPath, '[]', 'utf8');
+    await writeFile(pendingPath, '[]', 'utf8');
+
+    process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
+
+    const commandHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
+    let textHandler: ((ctx: any) => Promise<void> | void) | undefined;
+
+    class TelegrafMock {
+      telegram = { setMyCommands: vi.fn().mockResolvedValue(undefined) };
+      start(handler: any) { commandHandlers.set('start', handler); }
+      command(name: string, handler: any) { commandHandlers.set(name, handler); }
+      on(event: string, handler: any) { if (event === 'text') textHandler = handler; }
+      launch = vi.fn().mockResolvedValue(undefined);
+      stop = vi.fn();
+    }
+
+    vi.doMock('telegraf', () => ({ Telegraf: TelegrafMock }));
+
+    const { createAndStartBot } = await import('../src/bot/start-bot.js');
+    await createAndStartBot();
+
+    expect(commandHandlers.has('alpha_wallet_ekle')).toBe(true);
+    expect(commandHandlers.has('cancel')).toBe(true);
+    expect(textHandler).toBeTypeOf('function');
+
+    const replies: string[] = [];
+    const makeCtx = (text: string) => ({
+      chat: { id: 123 },
+      message: { text },
+      reply: async (msg: string) => { replies.push(msg); },
+    });
+
+    await commandHandlers.get('alpha_wallet_ekle')!(makeCtx('/alpha_wallet_ekle'));
+    expect(replies.at(-1)).toContain('Send the wallet address you want to add to alpha review.');
+
+    await textHandler!(makeCtx('hello'));
+    expect(replies.at(-1)).toContain('Invalid wallet address');
+
+    const validAddress = '0x74de5d4fcbf63e00296fd95d33236b9794016631';
+    await textHandler!(makeCtx(validAddress));
+    expect(replies.at(-1)).toContain('Wallet added to alpha review/watchlist.');
+
+    const parsed = JSON.parse(await readFile(reviewPath, 'utf8')) as Array<{ walletAddress: string }>;
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.walletAddress).toBe(validAddress);
+
+    await textHandler!(makeCtx('random text no pending'));
+    expect(replies.at(-1)).toContain('Use /help or Menu to choose an action.');
+
+    await commandHandlers.get('alpha_wallet_ekle')!(makeCtx('/alpha_wallet_ekle'));
+    await commandHandlers.get('cancel')!(makeCtx('/cancel'));
+    expect(replies.at(-1)).toBe('Cancelled.');
+
+    await textHandler!(makeCtx('0x1111111111111111111111111111111111111111'));
+    expect(replies.at(-1)).toContain('Use /help or Menu to choose an action.');
+
+    await commandHandlers.get('alpha_wallet_ekle')!(makeCtx(`/alpha_wallet_ekle ${validAddress}`));
+    expect(replies.at(-1)).toContain('already exists');
   });
 });
 

@@ -8,8 +8,9 @@ import { buildMonitorArgsFromEnv } from '../monitoring/monitor-runtime.js';
 import { runMonitorPoll } from '../cli/monitor-poll.js';
 import { registerBotCommands } from './product-commands.js';
 import { getAlphaWalletReviewEntries } from '../discovery/alpha-wallet-review-store.js';
-import { handleAlphaWalletEkle } from './alpha-wallet-command.js';
+import { handleAlphaWalletEkle, submitAlphaWalletAddress } from './alpha-wallet-command.js';
 import { copytradeComingSoon, positionsComingSoon, settingsComingSoon, walletComingSoon } from './placeholder-responses.js';
+import { clearPendingInput, getPendingInput, setPendingInput } from './pending-input-state.js';
 
 async function readJsonSafe<T>(filePath: string, fallback: T): Promise<T> {
   try {
@@ -43,7 +44,8 @@ export async function createAndStartBot() {
     '/status',
     '/signals',
     '/watchlist',
-    '/alpha_wallet_ekle <walletAddress>',
+    '/alpha_wallet_ekle (then send wallet) or /alpha_wallet_ekle 0x...',
+    '/cancel',
     '/help',
     '/copytrade',
     '/positions',
@@ -103,7 +105,39 @@ export async function createAndStartBot() {
   bot.command('alpha_wallet_ekle', async (ctx) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/alpha_wallet_ekle';
     const response = await handleAlphaWalletEkle({ text, chatId: String(ctx.chat.id) });
+    if ('needsInput' in response && response.needsInput) {
+      await setPendingInput(String(ctx.chat.id), 'alpha_wallet_address');
+    }
     await ctx.reply(response.message);
+  });
+
+  bot.command('cancel', async (ctx) => {
+    await clearPendingInput(String(ctx.chat.id));
+    await ctx.reply('Cancelled.');
+  });
+
+  bot.on('text', async (ctx) => {
+    const text = ctx.message.text.trim();
+    if (!text || text.startsWith('/')) return;
+
+    const chatId = String(ctx.chat.id);
+    const pending = await getPendingInput(chatId);
+
+    if (!pending) {
+      await ctx.reply('Use /help or Menu to choose an action.');
+      return;
+    }
+
+    if (pending.type === 'alpha_wallet_address') {
+      const response = await submitAlphaWalletAddress({ walletAddress: text, chatId });
+      if (response.ok) {
+        await clearPendingInput(chatId);
+      }
+      await ctx.reply(response.message);
+      return;
+    }
+
+    await ctx.reply('Use /help or Menu to choose an action.');
   });
 
   bot.command('run_poll', async (ctx) => {

@@ -6,19 +6,13 @@ export function parseAlphaWalletCommandInput(text: string): string | undefined {
   return args[0]?.trim().toLowerCase();
 }
 
-export async function handleAlphaWalletEkle(params: { text: string; chatId: string }) {
-  const walletAddress = parseAlphaWalletCommandInput(params.text);
-  if (!walletAddress) {
-    return {
-      ok: false as const,
-      message: 'Usage: /alpha_wallet_ekle <walletAddress>\nExample: /alpha_wallet_ekle 0xabc...',
-    };
-  }
+export async function submitAlphaWalletAddress(params: { walletAddress: string; chatId: string }) {
+  const walletAddress = params.walletAddress.trim().toLowerCase();
 
   if (!isEvmAddress(walletAddress)) {
     return {
       ok: false as const,
-      message: 'Invalid address. Please provide a valid EVM wallet address (0x...).',
+      message: 'Invalid wallet address. Send a valid EVM wallet address (0x...) or /cancel.',
     };
   }
 
@@ -47,4 +41,24 @@ export async function handleAlphaWalletEkle(params: { text: string; chatId: stri
       'Manual review may be required.',
     ].join('\n'),
   };
+}
+
+export async function handleAlphaWalletEkle(params: { text: string; chatId: string }) {
+  const walletAddress = parseAlphaWalletCommandInput(params.text);
+  if (!walletAddress) {
+    return {
+      ok: false as const,
+      message: [
+        'Send the wallet address you want to add to alpha review.',
+        '',
+        'Example:',
+        '0xabc...',
+        '',
+        'This does not mean the wallet is confirmed smart money yet. It will be reviewed/scored before monitoring.',
+      ].join('\n'),
+      needsInput: true as const,
+    };
+  }
+
+  return submitAlphaWalletAddress({ walletAddress, chatId: params.chatId });
 }

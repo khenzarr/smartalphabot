@@ -6,6 +6,7 @@ export const PRODUCT_MENU_COMMANDS = [
   { command: 'signals', description: 'Signal notification filters' },
   { command: 'watchlist', description: 'Smart wallet watchlist' },
   { command: 'alpha_wallet_ekle', description: 'Add/check alpha wallet' },
+  { command: 'cancel', description: 'Cancel current input' },
   { command: 'help', description: 'Help and usage' },
   { command: 'copytrade', description: 'Copy trade strategies' },
   { command: 'positions', description: 'Open positions' },
