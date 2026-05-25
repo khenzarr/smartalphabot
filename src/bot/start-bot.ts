@@ -163,7 +163,19 @@ export async function createAndStartBot() {
   bot.command('preview_signal', async (ctx) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/preview_signal';
     const parts = parseTokens(text);
+    const mode = (parts[0] ?? '').toLowerCase();
     const category = toSignalCategory(parts[0]) ?? 'watch_signal';
+
+    if (mode === 'latest') {
+      const latestSignals = await readJsonSafe<MonitorSignal[]>(path.join(env.MONITOR_OUTPUT_DIR, 'latest-signals.json'), []);
+      const latest = latestSignals[0];
+      if (latest) {
+        await ctx.reply(formatMonitorSignalMessage(latest), {
+          reply_markup: buildSignalInlineKeyboard(latest),
+        });
+        return;
+      }
+    }
 
     const mockSignal: MonitorSignal = {
       chain: 'base', tokenAddress: '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2', tokenSymbol: 'ALPHA', tokenName: 'Alpha Radar',
@@ -215,7 +227,7 @@ export async function createAndStartBot() {
     const top = [...filtered]
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       .slice(0, 10)
-      .map((x) => `${x.chain}:${shortWallet(x.walletAddress)} score=${x.score ?? 'n/a'} category=${x.category ?? 'n/a'} status=${x.status} reasons=${(x.reasons ?? []).slice(0, 2).join('|') || 'n/a'}`);
+      .map((x) => `${x.chain}:${shortWallet(x.walletAddress)} score=${x.score ?? 'n/a'} category=${x.category ?? 'n/a'} status=${x.status} +${(x.positiveReasons ?? []).slice(0, 2).join('|') || 'n/a'} blockers=${(x.promotionBlockers ?? []).slice(0, 2).join('|') || 'none'}`);
     await ctx.reply([
       `Review queue total: ${alphaReview.length}`,
       `High confidence: ${highConfidence.length}`,
@@ -271,10 +283,11 @@ export async function createAndStartBot() {
     if (!dryRunCheck.eligible) {
       const why = [
         dryRunCheck.skippedLowScore ? `score below threshold(${dryRunCheck.minScore})` : '',
-        dryRunCheck.skippedNotHighConfidence ? 'not high confidence' : '',
+        dryRunCheck.skippedNotEligibleCategory ? 'not eligible category' : '',
         dryRunCheck.skippedAlreadyMonitored ? 'already monitored' : '',
         dryRunCheck.skippedRejected ? 'rejected' : '',
         dryRunCheck.skippedMissingEvidence ? 'missing evidence' : '',
+        dryRunCheck.skippedRiskFlag ? 'risk flag' : '',
       ].filter(Boolean).join(', ') || 'not eligible by current policy';
       await ctx.reply(`Not eligible for promotion: ${why}. Use /promote <wallet> force to override safely.`);
       return;
@@ -318,6 +331,37 @@ export async function createAndStartBot() {
       notes: `Rejected via /reject: ${reason}`,
     });
     await ctx.reply(`Rejected wallet: ${maybeAddress} (status=rejected, reason saved).`);
+  });
+
+  bot.command('candidate', async (ctx) => {
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '/candidate';
+    const walletAddress = parseTokens(text)[0]?.trim();
+    if (!walletAddress) {
+      await ctx.reply('Usage: /candidate <walletAddress>');
+      return;
+    }
+    const candidate = await findReviewCandidate(walletAddress);
+    if (!candidate) {
+      await ctx.reply(`Candidate not found: ${walletAddress}`);
+      return;
+    }
+    const watchlist = await readJsonSafe<Array<{ chain?: string; walletAddress?: string }>>(env.MONITOR_WATCHLIST_PATH, []);
+    const monitored = watchlist.some((w) =>
+      (w.walletAddress ?? '').toLowerCase() === candidate.walletAddress.toLowerCase()
+      && (w.chain ?? '').toLowerCase() === (candidate.chain ?? '').toLowerCase());
+    await ctx.reply([
+      `${candidate.chain}:${candidate.walletAddress}`,
+      `score=${candidate.score ?? 'n/a'} category=${candidate.category ?? 'n/a'} status=${candidate.status}`,
+      `tokenAppearances=${candidate.tokenAppearances ?? 0} evidenceRows=${candidate.evidenceRows ?? 0}`,
+      `bestFirstBuyRank=${candidate.bestFirstBuyRank ?? 'n/a'} avgFirstBuyRank=${candidate.averageFirstBuyRank ?? 'n/a'}`,
+      `positiveReasons=${(candidate.positiveReasons ?? []).slice(0, 5).join('|') || 'n/a'}`,
+      `negativeReasons=${(candidate.negativeReasons ?? []).slice(0, 5).join('|') || 'n/a'}`,
+      `blockers=${(candidate.promotionBlockers ?? []).slice(0, 5).join('|') || 'none'}`,
+      `qualityNotes=${(candidate.qualityNotes ?? []).slice(0, 5).join('|') || 'n/a'}`,
+      `riskFlags=${(candidate.riskFlags ?? []).slice(0, 5).join('|') || 'none'}`,
+      `sourceFiles=${(candidate.sourceFiles ?? []).slice(0, 5).join('|') || 'n/a'}`,
+      `monitored=${monitored}`,
+    ].join('\n'));
   });
 
   bot.command('alpha_wallet_ekle', async (ctx) => {

@@ -1,42 +1,27 @@
 [
   {
     "chain": "ethereum",
-    "tokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
-    "symbol": ""
-  },
-  {
-    "chain": "ethereum",
-    "tokenAddress": "0x8de39b057cc6522230ab19c0205080a8663331ef",
-    "symbol": ""
-  },
-  {
-    "chain": "ethereum",
-    "tokenAddress": "0xcf0c122c6b73ff809c693db761e7baebe62b6a2e",
-    "symbol": ""
-  },
-  {
-    "chain": "ethereum",
-    "tokenAddress": "0xaaee1a9723aadb7afa2810263653a34ba2c21c7a",
-    "symbol": ""
-  },
-  {
-    "chain": "ethereum",
-    "tokenAddress": "0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee",
-    "symbol": ""
+    "tokenAddress": "0x0000000000c5dc95539589fbd24be07c6c14eca4",
+    "symbol": "CULT"
   },
   {
     "chain": "ethereum",
     "tokenAddress": "0x38e68a37e401f7271568cecaac63c6b1e19130b4",
-    "symbol": ""
+    "symbol": "BANANA"
   },
   {
-    "chain": "base",
-    "tokenAddress": "0x4f9fd6be4a90f2620860d680c0d4d5fb53d1a825",
-    "symbol": ""
+    "chain": "ethereum",
+    "tokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+    "symbol": "PEPE"
   },
   {
-    "chain": "base",
-    "tokenAddress": "0x0578d8a44db98b23bf096a382e016e29a5ce0ffe",
-    "symbol": ""
+    "chain": "ethereum",
+    "tokenAddress": "0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee",
+    "symbol": "Neiro"
+  },
+  {
+    "chain": "ethereum",
+    "tokenAddress": "0x8de39b057cc6522230ab19c0205080a8663331ef",
+    "symbol": "wojak"
   }
 ]

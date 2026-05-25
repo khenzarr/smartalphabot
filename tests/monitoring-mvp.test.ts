@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildMonitorWallets, main as importMonitorCandidatesMain } from '../src/cli/import-monitor-candidates.js';
-import { buildKnownTokens } from '../src/cli/build-monitor-known-tokens.js';
+import { buildKnownTokens, buildKnownTokensWithinBudget } from '../src/cli/build-monitor-known-tokens.js';
 import { scanRecentWalletActivity } from '../src/monitoring/recent-wallet-activity.js';
 import { buildSignals, buildSignalsWithStats } from '../src/monitoring/signal-builder.js';
 import { buildSignalDedupeKey } from '../src/monitoring/dedupe.js';
@@ -1213,6 +1213,86 @@ describe('monitoring MVP', () => {
       { chain: 'ethereum', tokenAddress: '0xccc', symbol: 'C', status: 'success', seedTriageStatus: 'keep' },
       { chain: 'base', tokenAddress: '0xddd', symbol: 'D', status: 'failed', seedTriageStatus: 'keep' },
     ], { seedSummary: 'x', out: 'y', onlyKeep: true });
-    expect(tokens.map((t) => `${t.chain}:${t.tokenAddress}`)).toEqual(['base:0xaaa', 'ethereum:0xccc']);
+    expect(tokens.map((t) => `${t.chain}:${t.tokenAddress}`)).toEqual(['ethereum:0xccc', 'base:0xaaa']);
+  });
+
+  it('known token builder caps token list to fit chunk budget and includes budget meta', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => ({
+      chain: i % 2 === 0 ? 'base' : 'ethereum',
+      tokenAddress: `0x${String(i + 1).padStart(40, '0')}`,
+      symbol: `T${i + 1}`,
+      status: 'success',
+      seedTriageStatus: 'keep',
+      source: 'seed',
+    }));
+
+    const result = buildKnownTokensWithinBudget(rows, {
+      maxTokens: 12,
+      chains: ['ethereum', 'base'],
+      walletCount: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      getLogsMaxBlockRange: 10,
+      chunkBudget: 1000,
+    });
+
+    expect(result.finalTokenCount).toBeLessThan(12);
+    expect(result.estimatedChunks).toBeLessThanOrEqual(1000);
+    expect(result.chunkBudget).toBe(1000);
+    expect(result.reducedToFitBudget).toBe(true);
+    expect(result.droppedDueToBudget).toBeGreaterThan(0);
+  });
+
+  it('known token builder prioritizes stronger evidence tokens over weaker evidence', () => {
+    const rows = [
+      {
+        chain: 'base',
+        tokenAddress: `0x${'11'.repeat(20)}`,
+        symbol: 'STRONG',
+        status: 'success',
+        seedTriageStatus: 'keep',
+        source: 'seed_keep',
+      },
+      {
+        chain: 'base',
+        tokenAddress: `0x${'22'.repeat(20)}`,
+        symbol: 'CANDIDATE',
+        status: 'success',
+        source: 'candidate_evidence',
+      },
+      {
+        chain: 'bsc',
+        tokenAddress: `0x${'33'.repeat(20)}`,
+        symbol: 'WEAK',
+        status: 'success',
+      },
+    ];
+
+    const tokens = buildKnownTokens(rows, 2);
+    expect(tokens.map((t) => t.symbol)).toEqual(['STRONG', 'CANDIDATE']);
+  });
+
+  it('default monitoring budget profile yields non-skip chunk estimate', () => {
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      chain: i % 2 === 0 ? 'base' : 'ethereum',
+      tokenAddress: `0x${String(i + 101).padStart(40, '0')}`,
+      symbol: `M${i + 1}`,
+      status: 'success',
+      seedTriageStatus: 'keep',
+      source: 'seed_keep',
+    }));
+
+    const result = buildKnownTokensWithinBudget(rows, {
+      maxTokens: 20,
+      chains: ['ethereum', 'base'],
+      walletCount: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      getLogsMaxBlockRange: 10,
+      chunkBudget: 1000,
+    });
+
+    expect(result.estimatedChunks).toBeLessThanOrEqual(1000);
+    expect(result.finalTokenCount).toBeLessThanOrEqual(20);
   });
 });

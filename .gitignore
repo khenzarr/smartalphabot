@@ -9,3 +9,4 @@ data/*.local.json
 data/alpha-wallet-review.local.json
 data/monitor-sent-signals.local.json
 data/telegram-chats.local.json
+__old_*

@@ -8,9 +8,12 @@ interface PromoteArgs {
   minScore: number;
   maxAdd: number;
   includeWatchCandidates: boolean;
+  explain?: boolean;
   force?: boolean;
   walletAddress?: string;
   chain?: string;
+  promotedBy?: string;
+  source?: string;
   promotedNote?: string;
 }
 
@@ -24,9 +27,12 @@ function parseArgs(argv: string[]): PromoteArgs {
     minScore: Number(read('min-score', String(env.DISCOVERY_AUTO_ADD_MIN_SCORE))),
     maxAdd: Number(read('max-add', String(env.DISCOVERY_MAX_NEW_WALLETS_PER_RUN))),
     includeWatchCandidates: read('include-watch-candidates', 'false') === 'true',
+    explain: read('explain', 'false') === 'true',
     force: read('force', 'false') === 'true',
-    walletAddress: read('wallet-address', '').trim() || undefined,
+    walletAddress: read('wallet-address', read('wallet', '')).trim() || undefined,
     chain: read('chain', '').trim() || undefined,
+    promotedBy: read('promoted-by', 'alpha:promote').trim() || 'alpha:promote',
+    source: read('source', 'alpha_promote').trim() || 'alpha_promote',
     promotedNote: read('promoted-note', '').trim() || undefined,
   };
 }
@@ -47,10 +53,23 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
 
   const skip = {
     skippedLowScore: 0,
-    skippedNotHighConfidence: 0,
+    skippedNotEligibleCategory: 0,
     skippedAlreadyMonitored: 0,
     skippedRejected: 0,
     skippedMissingEvidence: 0,
+    skippedRiskFlag: 0,
+  };
+
+  const skippedWithReasons: Array<{ chain: string; walletAddress: string; score: number; category?: string; reasons: string[] }> = [];
+
+  const explainSkip = (x: typeof review[number], reason: string) => {
+    skippedWithReasons.push({
+      chain: x.chain,
+      walletAddress: x.walletAddress,
+      score: x.score ?? 0,
+      category: x.category,
+      reasons: [reason, ...((x.promotionBlockers ?? []).slice(0, 2))],
+    });
   };
 
   const filtered = review.filter((x) => {
@@ -64,13 +83,15 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
       const score = x.score ?? 0;
       if (score < args.minScore) {
         skip.skippedLowScore += 1;
+        explainSkip(x, `score_below_min:${args.minScore}`);
         return false;
       }
 
       const isHigh = x.category === 'high_confidence';
       const isWatch = x.category === 'watch_candidate';
       if (!(isHigh || (args.includeWatchCandidates && isWatch))) {
-        skip.skippedNotHighConfidence += 1;
+        skip.skippedNotEligibleCategory += 1;
+        explainSkip(x, 'category_not_eligible');
         return false;
       }
     }
@@ -78,16 +99,25 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
     const key = `${x.chain.toLowerCase()}:${x.walletAddress.toLowerCase()}`;
     if (watchSet.has(key) || x.status === 'monitoring') {
       skip.skippedAlreadyMonitored += 1;
+      explainSkip(x, 'already_monitored');
       return false;
     }
 
     if (!args.force && x.status === 'rejected') {
       skip.skippedRejected += 1;
+      explainSkip(x, 'rejected_status');
+      return false;
+    }
+
+    if (!args.force && (x.riskFlags?.length ?? 0) > 0) {
+      skip.skippedRiskFlag += 1;
+      explainSkip(x, 'risk_flags_present');
       return false;
     }
 
     if (!args.force && (x.evidenceCount ?? 0) <= 0 && (x.tokenAppearances ?? 0) <= 0) {
       skip.skippedMissingEvidence += 1;
+      explainSkip(x, 'missing_evidence');
       return false;
     }
 
@@ -123,6 +153,9 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
         chain: c.chain,
         walletAddress: c.walletAddress,
         status: 'monitoring',
+        promotedBy: args.promotedBy ?? 'alpha:promote',
+        promotionReason: args.promotedNote ?? (args.force ? 'force_promote' : 'policy_eligible_promotion'),
+        promotionSource: args.source ?? 'alpha_promote',
         promotedAt: new Date().toISOString(),
         notes: args.promotedNote ?? (args.force ? 'Promoted via alpha:promote (force override)' : 'Promoted via alpha:promote'),
       });
@@ -142,11 +175,12 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
     force: Boolean(args.force),
     walletAddress: args.walletAddress,
     chain: args.chain,
+    explain: Boolean(args.explain),
     eligible: candidates.length,
     eligibleHighConfidence: candidates.filter((x) => x.category === 'high_confidence').length,
     eligibleWatchCandidates: candidates.filter((x) => x.category === 'watch_candidate').length,
     ...skip,
-    topCandidates: filtered.slice(0, 5).map((x) => ({
+    topEligible: filtered.slice(0, 5).map((x) => ({
       chain: x.chain,
       walletAddress: x.walletAddress,
       score: x.score ?? 0,
@@ -156,6 +190,7 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
       alreadyMonitored: watchSet.has(`${x.chain.toLowerCase()}:${x.walletAddress.toLowerCase()}`),
       rejected: x.status === 'rejected',
     })),
+    topSkippedWithReasons: skippedWithReasons.slice(0, 8),
     added,
   };
   console.log('Alpha promotion summary:', result);

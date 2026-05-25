@@ -206,6 +206,10 @@ export interface MonitorSignal {
   watchedWalletCount: number;
   watchedWallets: string[];
   walletScores?: number[];
+  watchedWalletScoreMax?: number;
+  watchedWalletScoreAvg?: number;
+  watchedWalletCategories?: string[];
+  topWallets?: Array<{ walletAddress: string; score: number; category?: string }>;
   firstSeenAt: string;
   latestSeenAt: string;
   txCount: number;

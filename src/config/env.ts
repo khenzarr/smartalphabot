@@ -47,7 +47,10 @@ const schema = z.object({
   DISCOVERY_AUTO_ADD_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(70),
   DISCOVERY_MAX_NEW_WALLETS_PER_RUN: z.coerce.number().int().positive().default(20),
   DISCOVERY_OUTPUT_DIR: z.string().default('output/discovery-worker'),
+  DISCOVERY_MAX_OUTPUT_FILES: z.coerce.number().int().positive().default(50),
+  DISCOVERY_MAX_FILE_BYTES: z.coerce.number().int().positive().default(10_000_000),
   ALPHA_WALLET_REVIEW_PATH: z.string().default('data/alpha-wallet-review.local.json'),
+  MONITOR_KNOWN_TOKENS_MAX: z.coerce.number().int().positive().max(100).default(20),
 });
 
 export const env = schema.parse(process.env);

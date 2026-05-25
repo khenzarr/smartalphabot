@@ -188,10 +188,37 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
       pushUnique(positiveReasons, 'token_age_under_7d');
     }
 
-    const avgWalletScore = rows.reduce((acc, r) => acc + (r.walletScore ?? 0), 0) / Math.max(rows.length, 1);
-    score += Math.min(20, Math.floor(avgWalletScore / 5));
+    const walletScoreRows = rows.filter((r) => Number.isFinite(r.walletScore));
+    const walletScores = walletScoreRows.map((r) => Number(r.walletScore ?? 0));
+    const maxWalletScore = walletScores.length ? Math.max(...walletScores) : 0;
+    const avgWalletScore = walletScores.length
+      ? walletScores.reduce((acc, n) => acc + n, 0) / walletScores.length
+      : 0;
+    const walletCategoryByScore = (scoreValue: number): string => {
+      if (scoreValue >= 80) return 'high_confidence';
+      if (scoreValue >= 55) return 'watch_candidate';
+      if (scoreValue >= 20) return 'needs_review';
+      return 'rejected';
+    };
+    const watchedWalletCategories = uniq(walletScores.map(walletCategoryByScore));
+    const topWallets = [...rows]
+      .map((r) => ({
+        walletAddress: r.walletAddress.toLowerCase(),
+        score: Number(r.walletScore ?? 0),
+        category: walletCategoryByScore(Number(r.walletScore ?? 0)),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
+    score += Math.min(16, Math.floor(avgWalletScore / 6));
+    score += Math.min(20, Math.floor(maxWalletScore / 4));
     pushUnique(positiveReasons, 'wallet_discovery_score_weighted');
+    if (maxWalletScore >= 85) pushUnique(positiveReasons, 'top_wallet_score_very_high');
     if (avgWalletScore >= 75) pushUnique(positiveReasons, 'watchlist_wallet_score_high');
+    if (wallets.length >= 2 && avgWalletScore < 45) {
+      score -= 8;
+      pushUnique(negativeReasons, 'multi_wallet_low_quality_mix');
+    }
     if (avgWalletScore > 0 && avgWalletScore < 55) {
       pushUnique(negativeReasons, 'watchlist_wallet_score_low');
       pushUnique(promotionBlockers, 'watchlist_wallet_score_low');
@@ -250,6 +277,12 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
       category = 'ignored';
     }
 
+    if (wallets.length >= 2 && maxWalletScore < 60 && category === 'strong_signal') {
+      category = 'watch_signal';
+      pushUnique(negativeReasons, 'downgraded_no_high_score_wallet');
+      pushUnique(qualityNotes, 'strong_requires_high_score_wallet');
+    }
+
     pushUnique(reasons, ...positiveReasons, ...negativeReasons, ...qualityNotes, ...promotionBlockers);
 
 
@@ -260,6 +293,11 @@ export function buildSignalsWithStats(events: EnrichedTokenEvent[]): BuildSignal
       name: sample.name,
       watchedWalletCount: wallets.length,
       watchedWallets: wallets,
+      walletScores,
+      watchedWalletScoreMax: maxWalletScore,
+      watchedWalletScoreAvg: Number(avgWalletScore.toFixed(2)),
+      watchedWalletCategories,
+      topWallets,
       firstSeenAt: rows.map((x) => x.observedAt).sort()[0] ?? new Date().toISOString(),
       latestSeenAt: rows.map((x) => x.observedAt).sort().slice(-1)[0] ?? new Date().toISOString(),
       txCount: rows.length,

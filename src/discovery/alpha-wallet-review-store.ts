@@ -18,6 +18,7 @@ export interface AlphaWalletReviewEntry {
   notes?: string;
   score?: number;
   evidenceCount?: number;
+  evidenceRows?: number;
   tokenAppearances?: number;
   bestFirstBuyRank?: number;
   averageFirstBuyRank?: number;
@@ -25,8 +26,17 @@ export interface AlphaWalletReviewEntry {
   warningCount?: number;
   riskFlags?: string[];
   reasons?: string[];
+  positiveReasons?: string[];
+  negativeReasons?: string[];
+  promotionBlockers?: string[];
+  qualityNotes?: string[];
+  sourceFiles?: string[];
+  manualSubmitted?: boolean;
   firstSeenAt?: string;
   promotedAt?: string;
+  promotedBy?: string;
+  promotionReason?: string;
+  promotionSource?: string;
   rejectedAt?: string;
   tags: string[];
 }
@@ -59,6 +69,7 @@ export async function upsertAlphaWalletReviewEntry(input: {
   score?: number;
   category?: AlphaWalletCategory;
   evidenceCount?: number;
+  evidenceRows?: number;
   tokenAppearances?: number;
   bestFirstBuyRank?: number;
   averageFirstBuyRank?: number;
@@ -66,8 +77,17 @@ export async function upsertAlphaWalletReviewEntry(input: {
   warningCount?: number;
   riskFlags?: string[];
   reasons?: string[];
+  positiveReasons?: string[];
+  negativeReasons?: string[];
+  promotionBlockers?: string[];
+  qualityNotes?: string[];
+  sourceFiles?: string[];
+  manualSubmitted?: boolean;
   firstSeenAt?: string;
   promotedAt?: string;
+  promotedBy?: string;
+  promotionReason?: string;
+  promotionSource?: string;
   rejectedAt?: string;
   tags?: string[];
   status?: AlphaWalletStatus;
@@ -89,6 +109,7 @@ export async function upsertAlphaWalletReviewEntry(input: {
       notes: input.notes ?? existing.notes,
       score: input.score ?? existing.score,
       evidenceCount: input.evidenceCount ?? existing.evidenceCount,
+      evidenceRows: input.evidenceRows ?? existing.evidenceRows,
       tokenAppearances: input.tokenAppearances ?? existing.tokenAppearances,
       bestFirstBuyRank: input.bestFirstBuyRank ?? existing.bestFirstBuyRank,
       averageFirstBuyRank: input.averageFirstBuyRank ?? existing.averageFirstBuyRank,
@@ -96,8 +117,17 @@ export async function upsertAlphaWalletReviewEntry(input: {
       warningCount: input.warningCount ?? existing.warningCount,
       riskFlags: input.riskFlags ?? existing.riskFlags,
       reasons: input.reasons ?? existing.reasons,
+      positiveReasons: input.positiveReasons ?? existing.positiveReasons,
+      negativeReasons: input.negativeReasons ?? existing.negativeReasons,
+      promotionBlockers: input.promotionBlockers ?? existing.promotionBlockers,
+      qualityNotes: input.qualityNotes ?? existing.qualityNotes,
+      sourceFiles: input.sourceFiles ?? existing.sourceFiles,
+      manualSubmitted: input.manualSubmitted ?? existing.manualSubmitted,
       firstSeenAt: existing.firstSeenAt ?? input.firstSeenAt ?? existing.addedAt,
       promotedAt: input.promotedAt ?? existing.promotedAt,
+      promotedBy: input.promotedBy ?? existing.promotedBy,
+      promotionReason: input.promotionReason ?? existing.promotionReason,
+      promotionSource: input.promotionSource ?? existing.promotionSource,
       rejectedAt: input.rejectedAt ?? existing.rejectedAt,
       status: input.status ?? existing.status,
       tags: input.tags ? [...new Set([...(existing.tags ?? []), ...input.tags])] : existing.tags ?? [],
@@ -118,6 +148,7 @@ export async function upsertAlphaWalletReviewEntry(input: {
     notes: input.notes,
     score: input.score,
     evidenceCount: input.evidenceCount,
+    evidenceRows: input.evidenceRows,
     tokenAppearances: input.tokenAppearances,
     bestFirstBuyRank: input.bestFirstBuyRank,
     averageFirstBuyRank: input.averageFirstBuyRank,
@@ -125,8 +156,17 @@ export async function upsertAlphaWalletReviewEntry(input: {
     warningCount: input.warningCount,
     riskFlags: input.riskFlags,
     reasons: input.reasons,
+    positiveReasons: input.positiveReasons,
+    negativeReasons: input.negativeReasons,
+    promotionBlockers: input.promotionBlockers,
+    qualityNotes: input.qualityNotes,
+    sourceFiles: input.sourceFiles,
+    manualSubmitted: input.manualSubmitted,
     firstSeenAt: input.firstSeenAt ?? now,
     promotedAt: input.promotedAt,
+    promotedBy: input.promotedBy,
+    promotionReason: input.promotionReason,
+    promotionSource: input.promotionSource,
     rejectedAt: input.rejectedAt,
     tags: input.tags ?? [],
   };
@@ -141,6 +181,9 @@ export async function updateAlphaWalletReviewStatus(input: {
   status: AlphaWalletStatus;
   notes?: string;
   promotedAt?: string;
+  promotedBy?: string;
+  promotionReason?: string;
+  promotionSource?: string;
   rejectedAt?: string;
   filePath?: string;
 }) {
@@ -151,6 +194,9 @@ export async function updateAlphaWalletReviewStatus(input: {
     status: input.status,
     notes: input.notes,
     promotedAt: input.promotedAt,
+    promotedBy: input.promotedBy,
+    promotionReason: input.promotionReason,
+    promotionSource: input.promotionSource,
     rejectedAt: input.rejectedAt,
     filePath: input.filePath,
   });
@@ -165,6 +211,7 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
     category?: AlphaWalletCategory;
     score?: number;
     evidenceCount?: number;
+    evidenceRows?: number;
     tokenAppearances?: number;
     bestFirstBuyRank?: number;
     averageFirstBuyRank?: number;
@@ -172,6 +219,12 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
     warningCount?: number;
     riskFlags?: string[];
     reasons?: string[];
+    positiveReasons?: string[];
+    negativeReasons?: string[];
+    promotionBlockers?: string[];
+    qualityNotes?: string[];
+    sourceFiles?: string[];
+    manualSubmitted?: boolean;
     firstSeenAt?: string;
     tags?: string[];
   }>;
@@ -197,6 +250,7 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
         category: c.category,
         score: c.score,
         evidenceCount: c.evidenceCount,
+        evidenceRows: c.evidenceRows,
         tokenAppearances: c.tokenAppearances,
         bestFirstBuyRank: c.bestFirstBuyRank,
         averageFirstBuyRank: c.averageFirstBuyRank,
@@ -204,6 +258,12 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
         warningCount: c.warningCount,
         riskFlags: c.riskFlags,
         reasons: c.reasons,
+        positiveReasons: c.positiveReasons,
+        negativeReasons: c.negativeReasons,
+        promotionBlockers: c.promotionBlockers,
+        qualityNotes: c.qualityNotes,
+        sourceFiles: c.sourceFiles,
+        manualSubmitted: c.manualSubmitted,
         firstSeenAt: c.firstSeenAt ?? now,
         tags: c.tags ?? [],
       });
@@ -223,6 +283,7 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
       category: c.category ?? existing.category,
       score: c.score ?? existing.score,
       evidenceCount: c.evidenceCount ?? existing.evidenceCount,
+      evidenceRows: c.evidenceRows ?? existing.evidenceRows,
       tokenAppearances: c.tokenAppearances ?? existing.tokenAppearances,
       bestFirstBuyRank: c.bestFirstBuyRank ?? existing.bestFirstBuyRank,
       averageFirstBuyRank: c.averageFirstBuyRank ?? existing.averageFirstBuyRank,
@@ -230,6 +291,12 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
       warningCount: c.warningCount ?? existing.warningCount,
       riskFlags: c.riskFlags ?? existing.riskFlags,
       reasons: c.reasons ?? existing.reasons,
+      positiveReasons: c.positiveReasons ?? existing.positiveReasons,
+      negativeReasons: c.negativeReasons ?? existing.negativeReasons,
+      promotionBlockers: c.promotionBlockers ?? existing.promotionBlockers,
+      qualityNotes: c.qualityNotes ?? existing.qualityNotes,
+      sourceFiles: c.sourceFiles ?? existing.sourceFiles,
+      manualSubmitted: c.manualSubmitted ?? existing.manualSubmitted,
       firstSeenAt: existing.firstSeenAt ?? c.firstSeenAt ?? existing.addedAt,
       lastSeenAt: now,
       notes: existing.notes,
