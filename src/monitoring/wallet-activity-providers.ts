@@ -112,12 +112,27 @@ function classifyErrorKind(error: unknown): WalletScanFailureErrorKind {
     ?? (error as { message?: string })?.message
     ?? error
     ?? '').toLowerCase();
+  if (msg.includes('addressless_getlogs_payload_invalid')) return 'invalid_getlogs_payload';
+  if (msg.includes('json is not a valid request object')) return 'invalid_getlogs_payload';
   if (msg.includes('hex string of odd length')) return 'invalid_hex_payload';
   if (msg.includes('hex number with leading zero digits')) return 'invalid_rpc_quantity_hex';
   if (msg.includes('up to a 10 block range') || msg.includes('block range should work')) return 'getlogs_range_too_wide';
   if (msg.includes('timeout') || msg.includes('timed out')) return 'rpc_timeout';
   if (msg.includes('invalid') || msg.includes('bad request') || msg.includes('revert') || msg.includes('forbidden')) return 'provider_rejection';
   return 'wallet_scan_failed';
+}
+
+function shouldTreatJsonInvalidAsAddresslessUnsupported(error: unknown): boolean {
+  const shortMsg = String((error as { shortMessage?: string })?.shortMessage ?? '').toLowerCase();
+  const rawMsg = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
+  const combined = `${shortMsg}\n${rawMsg}`;
+  if (!combined.includes('json is not a valid request object')) return false;
+  return combined.includes('under the free tier plan')
+    || combined.includes('block range should work')
+    || combined.includes('upgrade to payg')
+    || combined.includes('please specify an address')
+    || combined.includes('address required')
+    || combined.includes('eth_getlogs requires address');
 }
 
 function incrementMap<K extends string>(obj: Partial<Record<K, number>>, key: K): void {
@@ -140,6 +155,61 @@ function buildKnownTokenGetLogsPayload(args: {
     topics: [ERC20_TRANSFER_TOPIC, null, addressToTopic(args.walletAddress)],
     fromBlock: numberToRpcQuantityHex(BigInt(args.fromBlockHex)),
     toBlock: numberToRpcQuantityHex(BigInt(args.toBlockHex)),
+  };
+}
+
+function buildAddresslessGetLogsPayload(args: {
+  walletAddress: string;
+  fromBlock: bigint;
+  toBlock: bigint;
+}): {
+  topics: [string, null, string];
+  fromBlock: `0x${string}`;
+  toBlock: `0x${string}`;
+} {
+  return {
+    topics: [ERC20_TRANSFER_TOPIC, null, addressToTopic(args.walletAddress)],
+    fromBlock: numberToRpcQuantityHex(args.fromBlock),
+    toBlock: numberToRpcQuantityHex(args.toBlock),
+  };
+}
+
+function validateAddresslessGetLogsPayload(payload: {
+  address?: unknown;
+  topics?: unknown;
+  fromBlock?: unknown;
+  toBlock?: unknown;
+}, walletAddress: string): string | null {
+  if (payload.address !== undefined) return 'address_must_be_omitted_for_addressless';
+  if (!Array.isArray(payload.topics) || payload.topics.length < 3) return 'topics_invalid';
+  if (payload.topics[0] !== ERC20_TRANSFER_TOPIC) return 'transfer_topic_invalid';
+  if (payload.topics[1] !== null) return 'from_topic_must_be_null';
+  const expectedTo = addressToTopic(walletAddress).toLowerCase();
+  if (String(payload.topics[2] ?? '').toLowerCase() !== expectedTo) return 'to_topic_invalid';
+  if (!isValidTopic(String(payload.topics[0] ?? ''))) return 'transfer_topic_shape_invalid';
+  if (!isValidTopic(String(payload.topics[2] ?? ''))) return 'to_topic_shape_invalid';
+  if (!isValidRpcQuantityHex(String(payload.fromBlock ?? ''))) return 'from_block_invalid_rpc_quantity_hex';
+  if (!isValidRpcQuantityHex(String(payload.toBlock ?? ''))) return 'to_block_invalid_rpc_quantity_hex';
+  const disallowedUndefined = Object.entries(payload)
+    .some(([key, value]) => key !== 'address' && value === undefined);
+  if (disallowedUndefined) return 'undefined_field_present';
+  try {
+    if (BigInt(String(payload.fromBlock)) > BigInt(String(payload.toBlock))) return 'block_range_invalid';
+  } catch {
+    return 'block_range_parse_failed';
+  }
+  return null;
+}
+
+function sanitizePayloadForDiagnostics(payload: {
+  topics: [string, null, string];
+  fromBlock: `0x${string}`;
+  toBlock: `0x${string}`;
+}): Record<string, unknown> {
+  return {
+    fromBlock: payload.fromBlock,
+    toBlock: payload.toBlock,
+    topics: [payload.topics[0], payload.topics[1], payload.topics[2]],
   };
 }
 
@@ -228,16 +298,24 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
       stats.walletsScanned += 1;
       incrementMap(stats.scannedWalletsByChain, wallet.chain);
       const client = input.clientFactory?.(wallet.chain) ?? getEvmPublicClient(wallet.chain);
+      let requestPayload: {
+        topics: [string, null, string];
+        fromBlock: `0x${string}`;
+        toBlock: `0x${string}`;
+      } | null = null;
       try {
         const latest = await client.getBlockNumber();
         const fromBlock = latest > BigInt(blockWindows[wallet.chain]) ? latest - BigInt(blockWindows[wallet.chain]) : 0n;
+        requestPayload = buildAddresslessGetLogsPayload({
+          walletAddress: wallet.walletAddress,
+          fromBlock,
+          toBlock: latest,
+        });
+        const invalidPayloadReason = validateAddresslessGetLogsPayload(requestPayload, wallet.walletAddress);
+        if (invalidPayloadReason) throw new Error(`addressless_getlogs_payload_invalid:${invalidPayloadReason}`);
         const logs = (await client.request({
           method: 'eth_getLogs',
-          params: [{
-            topics: [ERC20_TRANSFER_TOPIC, null, addressToTopic(wallet.walletAddress)],
-            fromBlock: numberToRpcQuantityHex(fromBlock),
-            toBlock: numberToRpcQuantityHex(latest),
-          }],
+          params: [requestPayload],
         })) as Array<{
           address?: `0x${string}`;
           topics: `0x${string}`[];
@@ -251,7 +329,10 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
       } catch (error) {
         stats.walletScanFailures += 1;
         stats.walletsWithFailures += 1;
-        const kind = classifyErrorKind(error);
+        let kind = classifyErrorKind(error);
+        if (kind === 'invalid_getlogs_payload' && requestPayload && shouldTreatJsonInvalidAsAddresslessUnsupported(error)) {
+          kind = 'addressless_logs_not_supported';
+        }
         incrementMap(stats.failureKinds, kind);
         incrementMap(stats.failuresByChain, wallet.chain);
         incrementMap(stats.failuresByProviderMode, 'rpc-addressless');
@@ -263,6 +344,7 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
           errorKind: kind,
           shortMessage,
           rawMessage,
+          requestPayload: requestPayload ? sanitizePayloadForDiagnostics(requestPayload) : undefined,
           transferTopicUsed: ERC20_TRANSFER_TOPIC,
           toTopicUsed: addressToTopic(wallet.walletAddress),
         });
@@ -276,7 +358,21 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
           });
         } else {
           errors.push({
-            code: 'wallet_scan_failed',
+            code: kind === 'rpc_timeout'
+              ? 'rpc_timeout'
+              : kind === 'addressless_logs_not_supported'
+                ? 'addressless_logs_not_supported'
+              : kind === 'provider_rejection'
+                ? 'provider_rejection'
+                : kind === 'invalid_hex_payload'
+                  ? 'invalid_hex_payload'
+                  : kind === 'invalid_rpc_quantity_hex'
+                    ? 'invalid_rpc_quantity_hex'
+                    : kind === 'invalid_getlogs_payload'
+                      ? 'invalid_getlogs_payload'
+                      : kind === 'getlogs_range_too_wide'
+                        ? 'getlogs_range_too_wide'
+                        : 'wallet_scan_failed',
             chain: wallet.chain,
             walletAddress: wallet.walletAddress,
             message: shortMessage,

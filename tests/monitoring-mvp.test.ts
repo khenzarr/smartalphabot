@@ -12,9 +12,11 @@ import { runMonitorPoll } from '../src/cli/monitor-poll.js';
 import {
   ExplorerTokenTransferProvider,
   isAddresslessLogsRestrictionError,
+  RpcAddresslessActivityProvider,
   RpcKnownTokensActivityProvider,
 } from '../src/monitoring/wallet-activity-providers.js';
 import { fetchWalletTransfersWithExplorer } from '../src/monitoring/explorer-token-transfer-provider.js';
+import { ERC20_TRANSFER_TOPIC } from '../src/monitoring/constants.js';
 
 function makeStats(overrides: Record<string, unknown> = {}) {
   return {
@@ -642,6 +644,90 @@ describe('monitoring MVP', () => {
     const payload = (requests[0] as any)?.params?.[0];
     expect(payload.fromBlock).toBe('0x0');
     expect(payload.toBlock).toBe('0x9');
+  });
+
+  it('rpc-wallet-activity/addressless builds valid addressless getLogs payload', async () => {
+    const requests: any[] = [];
+    const provider = new RpcAddresslessActivityProvider();
+    await provider.getRecentIncomingTokenEvents({
+      wallets: [{
+        chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 10, category: 'candidate',
+        tokenAppearances: 1, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+        monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+      }],
+      chains: ['base'],
+      blockWindows: { base: 9, ethereum: 9, bsc: 9 },
+      clientFactory: () => ({
+        getBlockNumber: async () => 9n,
+        request: async (payload: unknown) => {
+          requests.push(payload);
+          return [];
+        },
+      } as never),
+    });
+
+    const payload = requests[0]?.params?.[0];
+    expect(payload).toBeDefined();
+    expect(payload.address).toBeUndefined();
+    expect(Array.isArray(payload.topics)).toBe(true);
+    expect(payload.topics[0]).toBe(ERC20_TRANSFER_TOPIC);
+    expect(payload.topics[1]).toBeNull();
+    expect(payload.topics[2]).toBe('0x0000000000000000000000000000000000000000000000000000000000000001');
+    expect(payload.fromBlock).toBe('0x0');
+    expect(payload.toBlock).toBe('0x9');
+    expect(payload.fromBlock).not.toBe('0x00');
+    expect(payload.toBlock).not.toBe('0x09');
+    expect(Object.values(payload).some((x) => x === undefined)).toBe(false);
+  });
+
+  it('rpc-addressless maps local malformed filter to invalid_getlogs_payload', async () => {
+    const provider = new RpcAddresslessActivityProvider();
+    const result = await provider.getRecentIncomingTokenEvents({
+      wallets: [{
+        chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 10, category: 'candidate',
+        tokenAppearances: 1, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+        monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+      }],
+      chains: ['base'],
+      clientFactory: () => ({
+        getBlockNumber: async () => 9n,
+        request: async () => {
+          throw new Error('addressless_getlogs_payload_invalid:from_block_invalid_rpc_quantity_hex');
+        },
+      } as never),
+    });
+
+    expect(result.failureDetails[0]?.errorKind).toBe('invalid_getlogs_payload');
+    expect(result.errors[0]?.code).toBe('invalid_getlogs_payload');
+    expect(result.stats.failureKinds.invalid_getlogs_payload).toBe(1);
+  });
+
+  it('rpc-addressless treats provider JSON-invalid response with locally valid filter as addressless_logs_not_supported', async () => {
+    const provider = new RpcAddresslessActivityProvider();
+    const result = await provider.getRecentIncomingTokenEvents({
+      wallets: [{
+        chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 10, category: 'candidate',
+        tokenAppearances: 1, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+        monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+      }],
+      chains: ['base'],
+      clientFactory: () => ({
+        getBlockNumber: async () => 9n,
+        request: async () => {
+          throw new Error('JSON is not a valid request object. Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range. Based on your parameters, this block range should work: [0x0, 0x9]. Upgrade to PAYG for expanded block range.');
+        },
+      } as never),
+    });
+
+    expect(result.failureDetails[0]?.errorKind).toBe('addressless_logs_not_supported');
+    expect(result.errors[0]?.code).toBe('addressless_logs_not_supported');
+    expect(result.stats.failureKinds.addressless_logs_not_supported).toBe(1);
+    expect(result.failureDetails[0]?.requestPayload).toBeDefined();
+    const sample = result.failureDetails[0]?.requestPayload as any;
+    expect(sample?.fromBlock).toBe('0x0');
+    expect(sample?.toBlock).toBe('0x9');
+    expect(Array.isArray(sample?.topics)).toBe(true);
+    expect(sample?.topics?.[0]).toBe(ERC20_TRANSFER_TOPIC);
   });
 
   it('known token provider pads wallet topic in topics[2]', async () => {
