@@ -1186,6 +1186,58 @@ describe('monitoring MVP', () => {
     expect(summary.fallbackUsed).toBe(true);
   });
 
+  it('rpc-wallet-activity mode uses wallet activity provider and reports source breakdown', async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'monitor-poll-rpc-wallet-activity-'));
+    const watchlist = path.join(tmp, 'monitor-wallets.json');
+    const outDir = path.join(tmp, 'out');
+    await writeFile(watchlist, JSON.stringify([{
+      chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 80, category: 'candidate',
+      tokenAppearances: 3, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+      monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+    }]), 'utf8');
+
+    await runMonitorPoll({
+      watchlist,
+      chains: ['base'],
+      maxWallets: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      bscBlocks: 300,
+      out: outDir,
+      activityProvider: 'rpc-wallet-activity',
+      knownTokens: '',
+      telegramDryRun: true,
+      sendTelegram: false,
+      telegramChatId: '',
+    }, {
+      walletActivityProvider: {
+        getRecentIncomingTokenEvents: async () => ({
+          events: [{
+            chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', tokenAddress: '0x00000000000000000000000000000000000000aa',
+            from: '0x2', to: '0x1', rawAmount: '0x1', txHash: `0x${'11'.repeat(32)}`, blockNumber: 1, logIndex: 0,
+            observedAt: '2026-01-01T00:00:00.000Z', warnings: [], source: 'rpc-wallet-activity', walletScore: 80,
+          }],
+          stats: makeStats({
+            walletsWithActivity: 1,
+            walletsWithNoActivity: 0,
+            walletActivityEventsFound: 1,
+            walletActivityUniqueTokens: 1,
+          }),
+          errors: [],
+          failureDetails: [],
+        }),
+      } as never,
+      marketClient: { getTokenProfile: async () => null } as never,
+      sendTelegram: vi.fn(async () => {}),
+    });
+
+    const summary = JSON.parse(await readFile(path.join(outDir, 'monitor-summary.json'), 'utf8'));
+    expect(summary.providerModeUsed).toBe('rpc-wallet-activity');
+    expect(summary.providerFallbackUsed).toBe(false);
+    expect(summary.rawEventsFound).toBe(1);
+    expect(summary.sourceBreakdown['rpc-wallet-activity']).toBe(1);
+  });
+
   it('etherscan mode without api key warns and does not crash', async () => {
     const result = await fetchWalletTransfersWithExplorer(
       {

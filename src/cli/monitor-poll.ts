@@ -21,6 +21,7 @@ import { pathToFileURL } from 'node:url';
 import {
   ExplorerTokenTransferProvider,
   RpcAddresslessActivityProvider,
+  RpcWalletActivityProvider,
   RpcKnownTokensActivityProvider,
 } from '../monitoring/wallet-activity-providers.js';
 import { TransactionContextAnalyzer } from '../monitoring/transaction-context.js';
@@ -99,6 +100,7 @@ function getEligibleSignalsForDelivery(signals: MonitorSignal[], sendWeak: boole
 
 interface MonitorPollDeps {
   addresslessProvider: RpcAddresslessActivityProvider;
+  walletActivityProvider: RpcWalletActivityProvider;
   knownTokensProvider: RpcKnownTokensActivityProvider;
   explorerProvider: ExplorerTokenTransferProvider;
   marketClient: DexScreenerClient;
@@ -224,6 +226,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
   const txContextMaxLookups = args.maxTxContextLookups ?? 100;
   const merged: MonitorPollDeps = {
     addresslessProvider: deps?.addresslessProvider ?? new RpcAddresslessActivityProvider(),
+    walletActivityProvider: deps?.walletActivityProvider ?? new RpcWalletActivityProvider(),
     knownTokensProvider: deps?.knownTokensProvider ?? new RpcKnownTokensActivityProvider(),
     explorerProvider: deps?.explorerProvider ?? new ExplorerTokenTransferProvider(),
     marketClient: deps?.marketClient ?? new DexScreenerClient(),
@@ -328,6 +331,18 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       warnings.add('explorer_unavailable');
       warnings.add('known_tokens_required_for_auto_indexer_fallback');
     }
+  } else if (args.activityProvider === 'rpc-wallet-activity') {
+    providerModeUsed = 'rpc-wallet-activity';
+    const result = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
+      wallets,
+      chains: args.chains,
+      maxWallets: args.maxWallets,
+      blockWindows,
+    });
+    eventsRaw = result.events as EnrichedTokenEvent[];
+    combinedStats = result.stats;
+    walletScanFailures = result.failureDetails;
+    for (const err of result.errors) warnings.add(err.code);
   } else {
     const result = await merged.addresslessProvider.getRecentIncomingTokenEvents({
       wallets,
@@ -436,6 +451,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     ignored: signals.filter((s) => s.category === 'ignored').length,
   };
   const sourceBreakdown = {
+    'rpc-wallet-activity': events.filter((e) => e.source === 'rpc-wallet-activity').length,
     'rpc-known-tokens': events.filter((e) => e.source === 'rpc-known-tokens').length,
     'rpc-addressless': events.filter((e) => e.source === 'rpc-addressless').length,
     explorer: events.filter((e) => e.source === 'explorer').length,

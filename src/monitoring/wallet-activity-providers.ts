@@ -291,6 +291,21 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
   }
 }
 
+export class RpcWalletActivityProvider extends RpcAddresslessActivityProvider {
+  override async getRecentIncomingTokenEvents(input: WalletActivityProviderInput): Promise<WalletActivityProviderResult> {
+    const result = await super.getRecentIncomingTokenEvents(input);
+    return {
+      ...result,
+      events: result.events.map((event) => ({ ...event, source: 'rpc-wallet-activity' })),
+      stats: {
+        ...result.stats,
+        walletActivityEventsFound: result.events.length,
+        walletActivityUniqueTokens: new Set(result.events.map((event) => `${event.chain}:${event.tokenAddress.toLowerCase()}`)).size,
+      },
+    };
+  }
+}
+
 export class RpcKnownTokensActivityProvider implements IWalletActivityProvider {
   async getRecentIncomingTokenEvents(input: WalletActivityProviderInput): Promise<WalletActivityProviderResult> {
     const blockWindows: Record<EvmSupportedChain, number> = {

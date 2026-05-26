@@ -2,7 +2,7 @@ import type { SupportedChain } from '../chains/chain.types.js';
 
 export type EvmSupportedChain = Extract<SupportedChain, 'ethereum' | 'base' | 'bsc'>;
 
-export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-known-tokens' | 'explorer' | 'auto-indexer';
+export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'auto-indexer';
 
 export type ExplorerProviderMode = 'auto' | 'blockscout' | 'etherscan';
 
@@ -57,8 +57,19 @@ export interface RecentWalletTokenEvent {
   observedAt: string;
   warnings: string[];
   walletScore?: number;
-  source?: 'rpc-addressless' | 'rpc-known-tokens' | 'explorer';
+  source?: 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer';
   explorerProvider?: Exclude<ExplorerProviderMode, 'auto'>;
+}
+
+export interface DiscoveredTokenCandidate {
+  chain: EvmSupportedChain;
+  tokenAddress: string;
+  firstSeenAt: string;
+  walletsSeen: string[];
+  txCount: number;
+  source: 'rpc-wallet-activity' | 'rpc-addressless' | 'explorer' | 'rpc-known-tokens';
+  riskFlags: string[];
+  suggestedAction: 'review' | 'merge_known_tokens';
 }
 
 export type LikelyActivityType =
@@ -173,6 +184,16 @@ export interface WalletActivityScanStats {
   explorerFailures?: number;
   explorerFailuresByChain?: Partial<Record<EvmSupportedChain, number>>;
   explorerWarnings?: string[];
+  addresslessProbeErrorKind?: WalletScanFailureErrorKind | 'none';
+  providerFallbackUsed?: boolean;
+  walletActivityEventsFound?: number;
+  walletActivityUniqueTokens?: number;
+  walletActivityTokensByChain?: Partial<Record<EvmSupportedChain, number>>;
+  walletActivityFallbackUsed?: boolean;
+  walletActivityDroppedStable?: number;
+  walletActivityDroppedSpam?: number;
+  walletActivityDroppedOverLimit?: number;
+  walletActivityProviderWarnings?: string[];
 }
 
 export interface EnrichedTokenEvent extends RecentWalletTokenEvent {
