@@ -73,7 +73,9 @@ export async function createAndStartBot() {
     '/signals',
     '/preview_signal [strong|watch|weak|ignored]',
     '/watchlist',
-    '/review [all|high|watch|needs|rejected|monitoring]',
+    '/review [all|high|watch|needs|stale|active|rejected|monitoring]',
+    '/candidate <walletAddress>',
+    '/watchlist_quality',
     '/promote <walletAddress>',
     '/reject <walletAddress>',
     '/monitor_now',
@@ -213,12 +215,18 @@ export async function createAndStartBot() {
     const needsReview = alphaReview.filter((x) => x.status === 'needs_review' || x.status === 'pending_review' || x.category === 'needs_review');
     const rejected = alphaReview.filter((x) => x.status === 'rejected' || x.category === 'rejected');
     const monitoring = alphaReview.filter((x) => x.status === 'monitoring');
+    const stale = alphaReview.filter((x) => x.qualityStatus === 'stale');
+    const active = alphaReview.filter((x) => x.qualityStatus === 'active_alpha' || x.qualityStatus === 'active_watch');
     const filtered = mode === 'high'
       ? highConfidence
       : mode === 'watch'
         ? watchCandidates
         : mode === 'needs'
           ? needsReview
+          : mode === 'stale'
+            ? stale
+            : mode === 'active'
+              ? active
           : mode === 'rejected'
             ? rejected
             : mode === 'monitoring'
@@ -227,12 +235,14 @@ export async function createAndStartBot() {
     const top = [...filtered]
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       .slice(0, 10)
-      .map((x) => `${x.chain}:${shortWallet(x.walletAddress)} score=${x.score ?? 'n/a'} category=${x.category ?? 'n/a'} status=${x.status} +${(x.positiveReasons ?? []).slice(0, 2).join('|') || 'n/a'} blockers=${(x.promotionBlockers ?? []).slice(0, 2).join('|') || 'none'}`);
+      .map((x) => `${x.chain}:${shortWallet(x.walletAddress)} score=${x.score ?? 'n/a'} category=${x.category ?? 'n/a'} status=${x.status} quality=${x.qualityStatus ?? 'unknown'} readiness=${x.promotionReadiness ?? 'n/a'} +${(x.positiveReasons ?? []).slice(0, 2).join('|') || 'n/a'} blockers=${(x.promotionBlockers ?? []).slice(0, 2).join('|') || 'none'}`);
     await ctx.reply([
       `Review queue total: ${alphaReview.length}`,
       `High confidence: ${highConfidence.length}`,
       `Watch candidates: ${watchCandidates.length}`,
       `Needs review: ${needsReview.length}`,
+      `Stale: ${stale.length}`,
+      `Active: ${active.length}`,
       `Rejected: ${rejected.length}`,
       `Monitoring: ${monitoring.length}`,
       `Mode: ${mode}`,
@@ -352,6 +362,8 @@ export async function createAndStartBot() {
     await ctx.reply([
       `${candidate.chain}:${candidate.walletAddress}`,
       `score=${candidate.score ?? 'n/a'} category=${candidate.category ?? 'n/a'} status=${candidate.status}`,
+      `qualityStatus=${candidate.qualityStatus ?? 'unknown'} promotionReadiness=${candidate.promotionReadiness ?? 'n/a'}`,
+      `activeEvidenceCount=${candidate.activeEvidenceCount ?? 0} recentActivityScore=${candidate.recentActivityScore ?? 0} sourceDiversityScore=${candidate.sourceDiversityScore ?? 0}`,
       `tokenAppearances=${candidate.tokenAppearances ?? 0} evidenceRows=${candidate.evidenceRows ?? 0}`,
       `bestFirstBuyRank=${candidate.bestFirstBuyRank ?? 'n/a'} avgFirstBuyRank=${candidate.averageFirstBuyRank ?? 'n/a'}`,
       `positiveReasons=${(candidate.positiveReasons ?? []).slice(0, 5).join('|') || 'n/a'}`,
@@ -361,6 +373,35 @@ export async function createAndStartBot() {
       `riskFlags=${(candidate.riskFlags ?? []).slice(0, 5).join('|') || 'none'}`,
       `sourceFiles=${(candidate.sourceFiles ?? []).slice(0, 5).join('|') || 'n/a'}`,
       `monitored=${monitored}`,
+      `recommendedAction=${candidate.qualityStatus === 'stale' ? 'stale_review' : candidate.promotionReadiness === 'eligible' ? 'keep' : candidate.promotionReadiness === 'watch_only' ? 'keep_watch' : 'investigate'}`,
+    ].join('\n'));
+  });
+
+  bot.command('watchlist_quality', async (ctx) => {
+    const reportPath = path.join('output', 'watchlist-quality', 'latest-report.json');
+    const report = await readJsonSafe<Record<string, unknown>>(reportPath, {});
+    const rows = Array.isArray(report.rows) ? report.rows as Array<Record<string, unknown>> : [];
+    if (!rows.length) {
+      await ctx.reply('Watchlist quality report not found. Run: npm run watchlist:quality');
+      return;
+    }
+    const counts = (report.counts ?? {}) as Record<string, unknown>;
+    const staleOrInvestigate = [...rows]
+      .filter((r) => String(r.qualityStatus ?? '') === 'stale' || String(r.recommendedAction ?? '') === 'investigate')
+      .slice(0, 5)
+      .map((r) => `${String(r.chain ?? 'unknown')}:${shortWallet(String(r.walletAddress ?? ''))} status=${String(r.qualityStatus ?? 'unknown')} action=${String(r.recommendedAction ?? 'n/a')}`);
+    const activeTop = [...rows]
+      .filter((r) => String(r.qualityStatus ?? '') === 'active_alpha' || String(r.qualityStatus ?? '') === 'active_watch')
+      .slice(0, 5)
+      .map((r) => `${String(r.chain ?? 'unknown')}:${shortWallet(String(r.walletAddress ?? ''))} status=${String(r.qualityStatus ?? 'unknown')} events=${String(r.recentEventsFound ?? 0)} signals=${String(r.latestSignalCount ?? 0)}`);
+
+    await ctx.reply([
+      `Watchlist quality total: ${String(report.totalWatchedWallets ?? rows.length)}`,
+      `active_alpha=${String(counts.active_alpha ?? 0)} active_watch=${String(counts.active_watch ?? 0)} stale=${String(counts.stale ?? 0)} noisy=${String(counts.noisy ?? 0)} unknown=${String(counts.unknown ?? 0)}`,
+      'Top stale/investigate:',
+      ...(staleOrInvestigate.length ? staleOrInvestigate : ['n/a']),
+      'Top active:',
+      ...(activeTop.length ? activeTop : ['n/a']),
     ].join('\n'));
   });
 

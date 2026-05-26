@@ -10,6 +10,8 @@ type CandidateSourceKind =
   | 'wallets'
   | 'evidence'
   | 'overlap'
+  | 'signals'
+  | 'watchlist_quality'
   | 'manual';
 
 export interface DiscoveryCandidate {
@@ -43,6 +45,11 @@ export interface DiscoveryCandidate {
   negativeReasons: string[];
   promotionBlockers: string[];
   qualityNotes: string[];
+  activeEvidenceCount: number;
+  recentActivityScore: number;
+  sourceDiversityScore: number;
+  qualityStatus?: 'active_alpha' | 'active_watch' | 'stale' | 'noisy' | 'unknown';
+  promotionReadiness: 'eligible' | 'watch_only' | 'blocked' | 'needs_more_evidence';
 }
 
 export interface DiscoverySourceScanSummary {
@@ -51,6 +58,8 @@ export interface DiscoverySourceScanSummary {
   candidatesFromShortlist: number;
   candidatesFromWallets: number;
   candidatesFromEvidence: number;
+  candidatesFromSignals: number;
+  candidatesFromWatchlistQuality: number;
   candidatesFromOverlap: number;
   candidatesFromManual: number;
   skippedFiles: string[];
@@ -94,6 +103,10 @@ interface AggregateCandidate {
   manualSubmitted: boolean;
   existingMonitorStatus?: string;
   existingReviewStatus?: string;
+  activityEvents: number;
+  activitySignals: number;
+  sourceKinds: Set<CandidateSourceKind>;
+  qualityStatus?: 'active_alpha' | 'active_watch' | 'stale' | 'noisy' | 'unknown';
 }
 
 function normalizeChain(chain: string | undefined): string {
@@ -179,6 +192,9 @@ function ensureAggregate(map: Map<string, AggregateCandidate>, chain: string, wa
     lastSeenAt: nowIso,
     firstSeenAt: nowIso,
     manualSubmitted: false,
+    activityEvents: 0,
+    activitySignals: 0,
+    sourceKinds: new Set<CandidateSourceKind>(),
   };
   map.set(key, created);
   return created;
@@ -209,6 +225,9 @@ function scoreCandidate(input: {
   const negativeReasons: string[] = [];
   const promotionBlockers: string[] = [];
   const qualityNotes: string[] = [];
+  const sourceDiversityScore = Math.min(15, c.sourceKinds.size * 3);
+  const recentActivityScore = Math.min(20, c.activityEvents * 2 + c.activitySignals * 3);
+  const activeEvidenceCount = evidenceCount + c.activityEvents + c.activitySignals;
   let score = 25;
 
   if (tokenAppearances >= 4) {
@@ -249,6 +268,18 @@ function scoreCandidate(input: {
     promotionBlockers.push('missing_evidence');
   }
 
+  if (recentActivityScore > 0) {
+    score += recentActivityScore;
+    positiveReasons.push('recent_activity_present');
+  } else {
+    negativeReasons.push('recent_activity_missing');
+  }
+
+  score += sourceDiversityScore;
+  if (sourceDiversityScore >= 6) {
+    positiveReasons.push('source_diversity');
+  }
+
   if (c.warningCount > 0) {
     score -= Math.min(30, c.warningCount * 5);
     negativeReasons.push('warning_count_high');
@@ -263,6 +294,24 @@ function scoreCandidate(input: {
     positiveReasons.push('manual_submission');
   }
 
+  if (c.qualityStatus === 'stale') {
+    score -= 15;
+    negativeReasons.push('watchlist_quality_stale');
+    promotionBlockers.push('stale_inactive');
+  }
+  if (c.qualityStatus === 'noisy') {
+    score -= 10;
+    negativeReasons.push('watchlist_quality_noisy');
+    promotionBlockers.push('noisy_wallet');
+  }
+  if (c.qualityStatus === 'active_alpha') {
+    score += 8;
+    positiveReasons.push('watchlist_quality_active_alpha');
+  } else if (c.qualityStatus === 'active_watch') {
+    score += 4;
+    positiveReasons.push('watchlist_quality_active_watch');
+  }
+
   if (monitorSet.has(key)) {
     score -= 10;
     negativeReasons.push('already_monitored');
@@ -272,6 +321,12 @@ function scoreCandidate(input: {
     score = Math.min(score, 5);
     negativeReasons.push('rejected_status');
     promotionBlockers.push('rejected_status');
+  }
+
+  if (c.manualSubmitted && evidenceCount <= 0 && tokenAppearances <= 1 && recentActivityScore <= 0) {
+    score = Math.min(score, 54);
+    negativeReasons.push('manual_only_insufficient');
+    promotionBlockers.push('manual_only_candidate');
   }
   if (isBadWallet(c.walletAddress)) {
     score = 0;
@@ -290,13 +345,18 @@ function scoreCandidate(input: {
   let category: AlphaWalletCategory = 'needs_review';
   if (promotionBlockers.includes('invalid_wallet') || promotionBlockers.includes('rejected_status')) {
     category = 'rejected';
-  } else if (score >= 80 && evidenceCount > 0 && tokenAppearances >= 2) {
+  } else if (score >= 80 && activeEvidenceCount > 0 && tokenAppearances >= 2 && !promotionBlockers.includes('manual_only_candidate')) {
     category = 'high_confidence';
   } else if (score >= 55) {
     category = 'watch_candidate';
   } else if (score < 20) {
     category = 'rejected';
   }
+
+  let promotionReadiness: DiscoveryCandidate['promotionReadiness'] = 'needs_more_evidence';
+  if (promotionBlockers.length > 0) promotionReadiness = 'blocked';
+  else if (category === 'high_confidence') promotionReadiness = 'eligible';
+  else if (category === 'watch_candidate') promotionReadiness = 'watch_only';
 
   return {
     chain: c.chain,
@@ -329,6 +389,11 @@ function scoreCandidate(input: {
     negativeReasons,
     promotionBlockers,
     qualityNotes,
+    activeEvidenceCount,
+    recentActivityScore,
+    sourceDiversityScore,
+    qualityStatus: c.qualityStatus,
+    promotionReadiness,
   };
 }
 
@@ -344,6 +409,7 @@ function addFromRow(
   const chain = normalizeChain(typeof row.chain === 'string' ? row.chain : undefined);
   const c = ensureAggregate(aggregate, chain, walletAddress, nowIso);
   c.sourceFiles.add(sourceFile);
+  c.sourceKinds.add(sourceKind);
   c.lastSeenAt = nowIso;
   if (sourceKind === 'manual') c.manualSubmitted = true;
 
@@ -403,6 +469,9 @@ export async function loadDiscoveryCandidates(params: {
     'token-buyer-summary.json',
     'wallet-overlap-matrix.json',
     'token-overlap-summary.json',
+    'signals.json',
+    'events.json',
+    'latest-report.json',
   ]);
 
   const scanSummary: DiscoverySourceScanSummary = {
@@ -411,6 +480,8 @@ export async function loadDiscoveryCandidates(params: {
     candidatesFromShortlist: 0,
     candidatesFromWallets: 0,
     candidatesFromEvidence: 0,
+    candidatesFromSignals: 0,
+    candidatesFromWatchlistQuality: 0,
     candidatesFromOverlap: 0,
     candidatesFromManual: 0,
     skippedFiles: [],
@@ -465,14 +536,37 @@ export async function loadDiscoveryCandidates(params: {
         ? 'wallets'
         : base === 'candidate-evidence.json' || base === 'token-buyer-summary.json'
           ? 'evidence'
+          : base === 'signals.json' || base === 'events.json'
+            ? 'signals'
+            : base === 'latest-report.json'
+              ? 'watchlist_quality'
           : 'overlap';
 
     sourceLabels.add(base);
     for (const row of rows) {
+      if (sourceKind === 'watchlist_quality') {
+        const walletAddress = String(row.walletAddress ?? '').toLowerCase();
+        if (!walletAddress || !walletAddress.startsWith('0x')) continue;
+        const chain = normalizeChain(typeof row.chain === 'string' ? row.chain : undefined);
+        const c = ensureAggregate(aggregate, chain, walletAddress, nowIso);
+        c.sourceFiles.add(file.path);
+        c.sourceKinds.add(sourceKind);
+        const status = typeof row.qualityStatus === 'string' ? row.qualityStatus as AggregateCandidate['qualityStatus'] : undefined;
+        c.qualityStatus = status ?? c.qualityStatus;
+        const recentEventsFound = toNum(row.recentEventsFound) ?? 0;
+        const latestSignalCount = toNum(row.latestSignalCount) ?? 0;
+        if (status === 'active_alpha' || status === 'active_watch') {
+          c.activityEvents += Math.max(0, recentEventsFound);
+          c.activitySignals += Math.max(0, latestSignalCount);
+        }
+        scanSummary.candidatesFromWatchlistQuality += 1;
+        continue;
+      }
       if (!addFromRow(aggregate, row, file.path, sourceKind, nowIso)) continue;
       if (sourceKind === 'shortlist') scanSummary.candidatesFromShortlist += 1;
       else if (sourceKind === 'wallets') scanSummary.candidatesFromWallets += 1;
       else if (sourceKind === 'evidence') scanSummary.candidatesFromEvidence += 1;
+      else if (sourceKind === 'signals') scanSummary.candidatesFromSignals += 1;
       else scanSummary.candidatesFromOverlap += 1;
     }
   }
@@ -526,6 +620,8 @@ export async function loadDiscoveryCandidates(params: {
     loaded: scanSummary.candidatesFromShortlist
       + scanSummary.candidatesFromWallets
       + scanSummary.candidatesFromEvidence
+      + scanSummary.candidatesFromSignals
+      + scanSummary.candidatesFromWatchlistQuality
       + scanSummary.candidatesFromOverlap
       + scanSummary.candidatesFromManual,
     sourceScan: scanSummary,

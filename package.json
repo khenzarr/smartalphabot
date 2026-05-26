@@ -23,6 +23,7 @@
     "monitor:poll": "tsx src/cli/monitor-poll.ts",
     "monitor:build-known-tokens": "tsx src/cli/build-monitor-known-tokens.ts",
     "monitor:merge-discovered-tokens": "tsx src/cli/merge-discovered-tokens.ts",
+    "watchlist:quality": "tsx src/cli/watchlist-quality.ts",
     "monitor:latest": "tsx src/cli/monitor-latest.ts",
     "discovery:latest": "tsx src/cli/discovery-latest.ts",
     "alpha:promote": "tsx src/discovery/promote-alpha-wallets.ts",

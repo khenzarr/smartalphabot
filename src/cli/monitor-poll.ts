@@ -165,6 +165,8 @@ function parseArgs(argv: string[]): Args {
     const i = argv.indexOf(`--${key}`);
     return i >= 0 ? (argv[i + 1] ?? fallback) : fallback;
   };
+  const walletActivityProfileRaw = read('wallet-activity-profile', env.MONITOR_WALLET_ACTIVITY_PROFILE);
+  const walletActivityProfile = parseWalletActivityProfile(walletActivityProfileRaw);
   return {
     watchlist: read('watchlist', 'data/monitor-wallets.json'),
     chains: read('chains', 'ethereum,base,bsc').split(',').map((x) => x.trim()) as EvmSupportedChain[],
@@ -186,10 +188,18 @@ function parseArgs(argv: string[]): Args {
     telegramChatId: read('telegram-chat-id', ''),
     txContext: read('tx-context', 'true') === 'true',
     maxTxContextLookups: Number(read('max-tx-context-lookups', '100')),
-    walletActivityProfile: read('wallet-activity-profile', env.MONITOR_WALLET_ACTIVITY_PROFILE) as WalletActivityProfile,
+    walletActivityProfile,
     walletActivityMaxEventsPerWallet: Number(read('wallet-activity-max-events-per-wallet', String(env.MONITOR_WALLET_ACTIVITY_MAX_EVENTS_PER_WALLET))),
     walletActivityMaxUniqueTokens: Number(read('wallet-activity-max-unique-tokens', String(env.MONITOR_WALLET_ACTIVITY_MAX_UNIQUE_TOKENS))),
   };
+}
+
+function parseWalletActivityProfile(value: string | undefined): WalletActivityProfile {
+  const normalized = String(value ?? 'safe').trim().toLowerCase();
+  if (normalized === 'tiny' || normalized === 'safe' || normalized === 'wide') {
+    return normalized;
+  }
+  throw new Error(`Invalid --wallet-activity-profile value "${String(value)}". Allowed: tiny, safe, wide`);
 }
 
 function clampPositiveInt(value: number, fallback: number): number {

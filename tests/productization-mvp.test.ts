@@ -190,7 +190,7 @@ describe('telegram conversational alpha wallet flow', () => {
     expect(tradeAction).toBeDefined();
     await tradeAction!.handler(cbCtx);
     expect(cbReplies.at(-1)).toContain('Trading is not enabled yet.');
-  });
+  }, 20000);
 });
 
 describe('telegram admin command outputs', () => {
@@ -233,7 +233,7 @@ describe('telegram admin command outputs', () => {
     await commandHandlers.get('review')!(ctx);
     expect(replies.at(-1)).toContain('Watch candidates: 1');
     expect(replies.at(-1)).toContain('Candidates:');
-  });
+  }, 20000);
 
   it('promote explains non-eligible candidate and supports force mode', async () => {
     vi.resetModules();

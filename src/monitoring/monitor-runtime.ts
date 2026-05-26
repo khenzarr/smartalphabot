@@ -30,6 +30,7 @@ const ACTIVITY_PROVIDER_MODES = new Set<MonitorActivityProviderMode>([
 ]);
 
 const EXPLORER_PROVIDER_MODES = new Set<ExplorerProviderMode>(['auto', 'blockscout', 'etherscan']);
+const WALLET_ACTIVITY_PROFILES = new Set<WalletActivityProfile>(['tiny', 'safe', 'wide']);
 
 export function parseMonitorActivityProvider(value: string | undefined): MonitorActivityProviderMode | undefined {
   if (!value) return undefined;
@@ -53,6 +54,18 @@ export function parseExplorerProvider(value: string | undefined): ExplorerProvid
     );
   }
   return normalized as ExplorerProviderMode;
+}
+
+export function parseWalletActivityProfile(value: string | undefined): WalletActivityProfile | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (!WALLET_ACTIVITY_PROFILES.has(normalized as WalletActivityProfile)) {
+    throw new Error(
+      `Invalid --wallet-activity-profile value "${value}". Allowed: ${Array.from(WALLET_ACTIVITY_PROFILES).join(', ')}`,
+    );
+  }
+  return normalized as WalletActivityProfile;
 }
 
 export function buildMonitorArgsFromEnv(options: MonitorRuntimeOptions = {}): Args {

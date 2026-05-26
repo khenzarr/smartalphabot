@@ -68,7 +68,7 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
       walletAddress: x.walletAddress,
       score: x.score ?? 0,
       category: x.category,
-      reasons: [reason, ...((x.promotionBlockers ?? []).slice(0, 2))],
+      reasons: [reason, ...(x.negativeReasons ?? []).slice(0, 2), ...((x.promotionBlockers ?? []).slice(0, 3))],
     });
   };
 
@@ -92,6 +92,12 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
       if (!(isHigh || (args.includeWatchCandidates && isWatch))) {
         skip.skippedNotEligibleCategory += 1;
         explainSkip(x, 'category_not_eligible');
+        return false;
+      }
+
+      if (!args.includeWatchCandidates && x.promotionReadiness === 'watch_only') {
+        skip.skippedNotEligibleCategory += 1;
+        explainSkip(x, 'watch_only_requires_include_watch_candidates');
         return false;
       }
     }
@@ -118,6 +124,18 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
     if (!args.force && (x.evidenceCount ?? 0) <= 0 && (x.tokenAppearances ?? 0) <= 0) {
       skip.skippedMissingEvidence += 1;
       explainSkip(x, 'missing_evidence');
+      return false;
+    }
+
+    if (!args.force && (x.source === 'telegram_manual' || x.manualSubmitted) && (x.evidenceCount ?? 0) <= 0 && (x.activeEvidenceCount ?? 0) <= 0) {
+      skip.skippedMissingEvidence += 1;
+      explainSkip(x, 'manual_only_candidate_requires_additional_evidence');
+      return false;
+    }
+
+    if (!args.force && x.qualityStatus === 'stale') {
+      skip.skippedMissingEvidence += 1;
+      explainSkip(x, 'stale_candidate_blocked');
       return false;
     }
 
@@ -185,10 +203,15 @@ export async function promoteAlphaWallets(args: PromoteArgs) {
       walletAddress: x.walletAddress,
       score: x.score ?? 0,
       category: x.category ?? 'needs_review',
+      qualityStatus: x.qualityStatus,
+      promotionReadiness: x.promotionReadiness,
+      activeEvidenceCount: x.activeEvidenceCount ?? 0,
+      recentActivityScore: x.recentActivityScore ?? 0,
       reasons: (x.reasons ?? []).slice(0, 3),
       status: x.status,
       alreadyMonitored: watchSet.has(`${x.chain.toLowerCase()}:${x.walletAddress.toLowerCase()}`),
       rejected: x.status === 'rejected',
+      blockers: (x.promotionBlockers ?? []).slice(0, 5),
     })),
     topSkippedWithReasons: skippedWithReasons.slice(0, 8),
     added,

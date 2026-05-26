@@ -30,6 +30,11 @@ export interface AlphaWalletReviewEntry {
   negativeReasons?: string[];
   promotionBlockers?: string[];
   qualityNotes?: string[];
+  qualityStatus?: 'active_alpha' | 'active_watch' | 'stale' | 'noisy' | 'unknown';
+  promotionReadiness?: 'eligible' | 'watch_only' | 'blocked' | 'needs_more_evidence';
+  activeEvidenceCount?: number;
+  recentActivityScore?: number;
+  sourceDiversityScore?: number;
   sourceFiles?: string[];
   manualSubmitted?: boolean;
   firstSeenAt?: string;
@@ -81,6 +86,11 @@ export async function upsertAlphaWalletReviewEntry(input: {
   negativeReasons?: string[];
   promotionBlockers?: string[];
   qualityNotes?: string[];
+  qualityStatus?: 'active_alpha' | 'active_watch' | 'stale' | 'noisy' | 'unknown';
+  promotionReadiness?: 'eligible' | 'watch_only' | 'blocked' | 'needs_more_evidence';
+  activeEvidenceCount?: number;
+  recentActivityScore?: number;
+  sourceDiversityScore?: number;
   sourceFiles?: string[];
   manualSubmitted?: boolean;
   firstSeenAt?: string;
@@ -121,6 +131,11 @@ export async function upsertAlphaWalletReviewEntry(input: {
       negativeReasons: input.negativeReasons ?? existing.negativeReasons,
       promotionBlockers: input.promotionBlockers ?? existing.promotionBlockers,
       qualityNotes: input.qualityNotes ?? existing.qualityNotes,
+      qualityStatus: input.qualityStatus ?? existing.qualityStatus,
+      promotionReadiness: input.promotionReadiness ?? existing.promotionReadiness,
+      activeEvidenceCount: input.activeEvidenceCount ?? existing.activeEvidenceCount,
+      recentActivityScore: input.recentActivityScore ?? existing.recentActivityScore,
+      sourceDiversityScore: input.sourceDiversityScore ?? existing.sourceDiversityScore,
       sourceFiles: input.sourceFiles ?? existing.sourceFiles,
       manualSubmitted: input.manualSubmitted ?? existing.manualSubmitted,
       firstSeenAt: existing.firstSeenAt ?? input.firstSeenAt ?? existing.addedAt,
@@ -160,6 +175,11 @@ export async function upsertAlphaWalletReviewEntry(input: {
     negativeReasons: input.negativeReasons,
     promotionBlockers: input.promotionBlockers,
     qualityNotes: input.qualityNotes,
+    qualityStatus: input.qualityStatus,
+    promotionReadiness: input.promotionReadiness,
+    activeEvidenceCount: input.activeEvidenceCount,
+    recentActivityScore: input.recentActivityScore,
+    sourceDiversityScore: input.sourceDiversityScore,
     sourceFiles: input.sourceFiles,
     manualSubmitted: input.manualSubmitted,
     firstSeenAt: input.firstSeenAt ?? now,
@@ -223,6 +243,11 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
     negativeReasons?: string[];
     promotionBlockers?: string[];
     qualityNotes?: string[];
+    qualityStatus?: 'active_alpha' | 'active_watch' | 'stale' | 'noisy' | 'unknown';
+    promotionReadiness?: 'eligible' | 'watch_only' | 'blocked' | 'needs_more_evidence';
+    activeEvidenceCount?: number;
+    recentActivityScore?: number;
+    sourceDiversityScore?: number;
     sourceFiles?: string[];
     manualSubmitted?: boolean;
     firstSeenAt?: string;
@@ -262,6 +287,11 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
         negativeReasons: c.negativeReasons,
         promotionBlockers: c.promotionBlockers,
         qualityNotes: c.qualityNotes,
+        qualityStatus: c.qualityStatus,
+        promotionReadiness: c.promotionReadiness,
+        activeEvidenceCount: c.activeEvidenceCount,
+        recentActivityScore: c.recentActivityScore,
+        sourceDiversityScore: c.sourceDiversityScore,
         sourceFiles: c.sourceFiles,
         manualSubmitted: c.manualSubmitted,
         firstSeenAt: c.firstSeenAt ?? now,
@@ -295,6 +325,11 @@ export async function bulkMergeAlphaWalletReviewEntries(input: {
       negativeReasons: c.negativeReasons ?? existing.negativeReasons,
       promotionBlockers: c.promotionBlockers ?? existing.promotionBlockers,
       qualityNotes: c.qualityNotes ?? existing.qualityNotes,
+      qualityStatus: c.qualityStatus ?? existing.qualityStatus,
+      promotionReadiness: c.promotionReadiness ?? existing.promotionReadiness,
+      activeEvidenceCount: c.activeEvidenceCount ?? existing.activeEvidenceCount,
+      recentActivityScore: c.recentActivityScore ?? existing.recentActivityScore,
+      sourceDiversityScore: c.sourceDiversityScore ?? existing.sourceDiversityScore,
       sourceFiles: c.sourceFiles ?? existing.sourceFiles,
       manualSubmitted: c.manualSubmitted ?? existing.manualSubmitted,
       firstSeenAt: existing.firstSeenAt ?? c.firstSeenAt ?? existing.addedAt,
