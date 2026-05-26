@@ -31,6 +31,40 @@ describe('monitor runtime wiring', () => {
     expect(args.maxTxContextLookups).toBe(5);
   });
 
+  it('worker runtime activityProvider override wins over env', async () => {
+    vi.resetModules();
+    process.env.MONITOR_ACTIVITY_PROVIDER = 'rpc-known-tokens';
+    const { buildMonitorArgsFromEnv } = await import('../src/monitoring/monitor-runtime.js');
+    const args = buildMonitorArgsFromEnv({
+      dryRun: true,
+      activityProvider: 'auto-indexer',
+    });
+    expect(args.activityProvider).toBe('auto-indexer');
+  });
+
+  it('worker runtime explorerProvider override wins over env', async () => {
+    vi.resetModules();
+    process.env.MONITOR_EXPLORER_PROVIDER = 'blockscout';
+    const { buildMonitorArgsFromEnv } = await import('../src/monitoring/monitor-runtime.js');
+    const args = buildMonitorArgsFromEnv({
+      dryRun: true,
+      explorerProvider: 'etherscan',
+    });
+    expect(args.explorerProvider).toBe('etherscan');
+  });
+
+  it('runtime parser accepts rpc-wallet-activity mode', async () => {
+    vi.resetModules();
+    const { parseMonitorActivityProvider } = await import('../src/monitoring/monitor-runtime.js');
+    expect(parseMonitorActivityProvider('rpc-wallet-activity')).toBe('rpc-wallet-activity');
+  });
+
+  it('runtime parser throws on invalid activity provider', async () => {
+    vi.resetModules();
+    const { parseMonitorActivityProvider } = await import('../src/monitoring/monitor-runtime.js');
+    expect(() => parseMonitorActivityProvider('not-a-provider')).toThrow(/Invalid --activity-provider value/);
+  });
+
   it('MONITOR_DRY_RUN=false resolves to false from env', async () => {
     vi.resetModules();
     process.env.MONITOR_DRY_RUN = 'false';
