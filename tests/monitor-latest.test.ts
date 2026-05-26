@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +17,9 @@ describe('monitor-latest latest completed run selection', () => {
 
     await writeFile(path.join(oldRun, 'monitor-summary.json'), JSON.stringify({ runAt: '2026-01-01T00:00:00.000Z', eventsFound: 1 }, null, 2), 'utf8');
     await writeFile(path.join(newRun, 'monitor-summary.json'), JSON.stringify({ runAt: '2026-01-01T00:10:00.000Z', eventsFound: 2 }, null, 2), 'utf8');
+
+    await utimes(path.join(oldRun, 'monitor-summary.json'), new Date('2026-01-01T00:00:01.000Z'), new Date('2026-01-01T00:00:01.000Z'));
+    await utimes(path.join(newRun, 'monitor-summary.json'), new Date('2026-01-01T00:10:01.000Z'), new Date('2026-01-01T00:10:01.000Z'));
 
     const { resolveLatestCompletedRun } = await import('../src/cli/monitor-latest.js');
     const latest = await resolveLatestCompletedRun(outDir);
