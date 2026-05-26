@@ -1148,6 +1148,22 @@ describe('monitoring MVP', () => {
       sendTelegram: false,
       telegramChatId: '',
     }, {
+      walletActivityProvider: {
+        getRecentIncomingTokenEvents: async () => ({
+          events: [],
+          stats: makeStats({
+            addresslessLogsSupported: 'false',
+            walletScanFailures: 1,
+            walletScanFailureDetailsCount: 1,
+            failureKinds: { addressless_logs_not_supported: 1 },
+            failuresByProviderMode: { 'rpc-wallet-activity': 1 },
+          }),
+          errors: [{ code: 'addressless_logs_not_supported', chain: 'base', walletAddress: '0x1', message: 'rpc rejects addressless getLogs' }],
+          failureDetails: [{
+            chain: 'base', walletAddress: '0x1', providerMode: 'rpc-wallet-activity', errorKind: 'addressless_logs_not_supported', shortMessage: 'rpc rejects addressless getLogs', rawMessage: 'rpc rejects addressless getLogs',
+          }],
+        }),
+      } as never,
       explorerProvider: {
         getRecentIncomingTokenEvents: async () => ({
           events: [],
@@ -1184,6 +1200,14 @@ describe('monitoring MVP', () => {
     expect(summary.providerModeUsed).toBe('rpc-known-tokens');
     expect(summary.providerFallbackUsed).toBe(true);
     expect(summary.fallbackUsed).toBe(true);
+    expect(summary.providerAttemptOrder).toEqual(['rpc-wallet-activity', 'explorer', 'rpc-known-tokens']);
+    expect(summary.rpcWalletActivityAttempted).toBe(true);
+    expect(summary.rpcWalletActivitySupported).toBe(false);
+    expect(summary.rpcWalletActivityFallbackReason).toContain('rpc rejects addressless getLogs');
+    expect(summary.addresslessProbeAttempted).toBe(true);
+    expect(summary.addresslessProbeResult).toBe('unsupported');
+    expect(summary.addresslessProbeErrorKind).toBe('addressless_logs_not_supported');
+    expect(summary.sourceBreakdown['rpc-known-tokens']).toBe(1);
   });
 
   it('rpc-wallet-activity mode uses wallet activity provider and reports source breakdown', async () => {

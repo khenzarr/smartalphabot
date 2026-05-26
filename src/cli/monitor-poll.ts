@@ -251,6 +251,14 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
   const maxTransfersPerWallet = args.maxTransfersPerWallet ?? 100;
   let providerModeUsed: MonitorActivityProviderMode | 'none' = args.activityProvider;
   let providerFallbackUsed = false;
+  const providerAttemptOrder: Array<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens'> = [];
+  const providerAttempts: Partial<Record<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>> = {};
+  let rpcWalletActivityAttempted = false;
+  let rpcWalletActivitySupported: boolean | undefined;
+  let rpcWalletActivityFallbackReason = 'not_attempted';
+  let addresslessProbeAttempted = false;
+  let addresslessProbeResult: 'supported' | 'unsupported' | 'unknown' = 'unknown';
+  let addresslessProbeErrorKind: string = 'none';
   let combinedStats: WalletActivityScanStats = emptyScanStats(args.chains);
   let walletScanFailures: WalletScanFailureDetail[] = [];
 
@@ -294,6 +302,53 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     walletScanFailures = result.failureDetails;
     for (const err of result.errors) warnings.add(err.code);
   } else if (args.activityProvider === 'auto-indexer') {
+    console.log('[monitor][provider] attempting rpc-wallet-activity');
+    providerAttemptOrder.push('rpc-wallet-activity');
+    providerAttempts['rpc-wallet-activity'] = 'attempted';
+    rpcWalletActivityAttempted = true;
+    addresslessProbeAttempted = true;
+    const walletActivityResult = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
+      wallets,
+      chains: args.chains,
+      maxWallets: args.maxWallets,
+      blockWindows,
+    });
+    const walletActivityUnsupportedError = walletActivityResult.errors.find((e) => e.code === 'addressless_logs_not_supported');
+    const walletActivityUnsupportedDetail = walletActivityResult.failureDetails.find((d) => d.errorKind === 'addressless_logs_not_supported');
+    const walletActivityUnsupported = Boolean(walletActivityUnsupportedError || walletActivityUnsupportedDetail);
+    if (walletActivityUnsupported) {
+      rpcWalletActivitySupported = false;
+      addresslessProbeResult = 'unsupported';
+      addresslessProbeErrorKind = walletActivityUnsupportedDetail?.errorKind ?? 'addressless_logs_not_supported';
+      rpcWalletActivityFallbackReason = walletActivityUnsupportedError?.message
+        ?? walletActivityUnsupportedDetail?.shortMessage
+        ?? 'addressless_logs_not_supported';
+      console.log(`[monitor][provider] rpc-wallet-activity unsupported: ${rpcWalletActivityFallbackReason}`);
+      console.log('[monitor][provider] falling back to explorer');
+    } else if (walletActivityResult.events.length > 0) {
+      rpcWalletActivitySupported = true;
+      addresslessProbeResult = 'supported';
+      addresslessProbeErrorKind = 'none';
+      rpcWalletActivityFallbackReason = 'none';
+      providerModeUsed = 'rpc-wallet-activity';
+      providerAttempts['rpc-wallet-activity'] = 'used';
+      eventsRaw = walletActivityResult.events as EnrichedTokenEvent[];
+      combinedStats = walletActivityResult.stats;
+      walletScanFailures = walletActivityResult.failureDetails;
+      for (const err of walletActivityResult.errors) warnings.add(err.code);
+    } else {
+      rpcWalletActivitySupported = true;
+      addresslessProbeResult = 'supported';
+      addresslessProbeErrorKind = 'none';
+      rpcWalletActivityFallbackReason = 'no_events_found';
+      console.log('[monitor][provider] falling back to explorer');
+    }
+
+    if (providerModeUsed === 'rpc-wallet-activity') {
+      // no-op; already selected above
+    } else {
+      providerAttemptOrder.push('explorer');
+      providerAttempts.explorer = 'attempted';
     const explorerResult = await merged.explorerProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
@@ -306,11 +361,15 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     const explorerUnavailable = explorerResult.errors.some((e) => e.code === 'explorer_unavailable' || e.code === 'explorer_unsupported_chain' || e.code === 'explorer_rate_limited');
     if (explorerResult.events.length > 0 || !explorerUnavailable) {
       providerModeUsed = 'explorer';
+      providerAttempts.explorer = 'used';
       eventsRaw = explorerResult.events as EnrichedTokenEvent[];
       combinedStats = explorerResult.stats;
       walletScanFailures = explorerResult.failureDetails;
       for (const err of explorerResult.errors) warnings.add(err.code);
     } else if (knownTokens.length) {
+      console.log('[monitor][provider] falling back to rpc-known-tokens');
+      providerAttemptOrder.push('rpc-known-tokens');
+      providerAttempts['rpc-known-tokens'] = 'fallback';
       const fallbackResult = await merged.knownTokensProvider.getRecentIncomingTokenEvents({
         wallets,
         chains: args.chains,
@@ -331,6 +390,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       walletScanFailures = explorerResult.failureDetails;
       warnings.add('explorer_unavailable');
       warnings.add('known_tokens_required_for_auto_indexer_fallback');
+    }
     }
   } else if (args.activityProvider === 'rpc-wallet-activity') {
     providerModeUsed = 'rpc-wallet-activity';
@@ -464,6 +524,14 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     providerModeRequested: args.activityProvider,
     providerModeUsed,
     providerFallbackUsed,
+    providerAttemptOrder,
+    providerAttempts,
+    rpcWalletActivityAttempted,
+    rpcWalletActivitySupported,
+    rpcWalletActivityFallbackReason,
+    addresslessProbeAttempted,
+    addresslessProbeResult,
+    addresslessProbeErrorKind,
     chainsScanned: combinedStats.chainsScanned,
     watchedWalletsScanned: combinedStats.walletsScanned,
     txContextEnabled,

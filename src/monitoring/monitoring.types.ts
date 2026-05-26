@@ -184,7 +184,6 @@ export interface WalletActivityScanStats {
   explorerFailures?: number;
   explorerFailuresByChain?: Partial<Record<EvmSupportedChain, number>>;
   explorerWarnings?: string[];
-  addresslessProbeErrorKind?: WalletScanFailureErrorKind | 'none';
   providerFallbackUsed?: boolean;
   walletActivityEventsFound?: number;
   walletActivityUniqueTokens?: number;
@@ -194,6 +193,14 @@ export interface WalletActivityScanStats {
   walletActivityDroppedSpam?: number;
   walletActivityDroppedOverLimit?: number;
   walletActivityProviderWarnings?: string[];
+  providerAttemptOrder?: Array<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens'>;
+  providerAttempts?: Partial<Record<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>>;
+  rpcWalletActivityAttempted?: boolean;
+  rpcWalletActivitySupported?: boolean;
+  rpcWalletActivityFallbackReason?: string;
+  addresslessProbeAttempted?: boolean;
+  addresslessProbeResult?: 'supported' | 'unsupported' | 'unknown';
+  addresslessProbeErrorKind?: WalletScanFailureErrorKind | 'none';
 }
 
 export interface EnrichedTokenEvent extends RecentWalletTokenEvent {
