@@ -591,4 +591,85 @@ describe('runSeedBatch wallet enrichment', () => {
     expect(unfocused.candidates.length).toBeGreaterThan(focused.candidates.length);
     expect(focused.tokenResults.length).toBeGreaterThan(0);
   });
+
+  it('builds cumulative cache across repeated checkpointed free-rpc runs', async () => {
+    const outDir = `output/test-seed-batch-cumulative-cache-${Date.now()}`;
+    await mkdir(outDir, { recursive: true });
+    const inputPath = path.join(outDir, 'seed.json');
+    await writeFile(
+      inputPath,
+      JSON.stringify([
+        { chain: 'base', label: 'TOKEN_A', tokenAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+        { chain: 'base', label: 'TOKEN_B', tokenAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+      ]),
+      'utf8',
+    );
+
+    const first = await runSeedBatch({
+      inputPath,
+      outDir,
+      csv: true,
+      freeRpcMode: true,
+      maxSeedsPerRun: 1,
+      minTokenAppearances: 2,
+    });
+    expect(first.summary.cachedTokenResultsLoaded).toBe(0);
+    expect(first.summary.cachedTokenResultsWritten).toBe(1);
+    expect(first.summary.completedSeedResults).toBe(1);
+    expect(first.summary.pendingSeedResults).toBe(1);
+    expect(first.candidates.length).toBe(0);
+
+    const second = await runSeedBatch({
+      inputPath,
+      outDir,
+      csv: true,
+      freeRpcMode: true,
+      maxSeedsPerRun: 1,
+      minTokenAppearances: 2,
+    });
+
+    expect(second.summary.cachedTokenResultsLoaded).toBeGreaterThanOrEqual(1);
+    expect(second.summary.cachedTokenResultsWritten).toBe(1);
+    expect(second.summary.completedSeedResults).toBe(2);
+    expect(second.summary.pendingSeedResults).toBe(0);
+    expect(second.summary.cumulativeMode).toBe(true);
+    expect(second.candidates.some((x) => x.walletAddress.toLowerCase() === '0x1111111111111111111111111111111111111111')).toBe(true);
+
+    const tokenRows = JSON.parse(await readFile(second.outputFiles.tokenBuyerSummaryJson, 'utf8')) as Array<{ tokenLabel?: string }>;
+    expect(tokenRows.map((x) => x.tokenLabel)).toEqual(expect.arrayContaining(['TOKEN_A', 'TOKEN_B']));
+
+    const cacheA = await readFile(path.join(outDir, 'token-results-cache', 'base-0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json'), 'utf8');
+    const cacheB = await readFile(path.join(outDir, 'token-results-cache', 'base-0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json'), 'utf8');
+    expect(() => JSON.parse(cacheA)).not.toThrow();
+    expect(() => JSON.parse(cacheB)).not.toThrow();
+  });
+
+  it('does not classify maxSeedsPerRun-deferred seeds as drop candidates', async () => {
+    const outDir = `output/test-seed-batch-deferred-not-drop-${Date.now()}`;
+    await mkdir(outDir, { recursive: true });
+    const inputPath = path.join(outDir, 'seed.json');
+    await writeFile(
+      inputPath,
+      JSON.stringify([
+        { chain: 'base', label: 'TOKEN_A', tokenAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+        { chain: 'base', label: 'TOKEN_B', tokenAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+      ]),
+      'utf8',
+    );
+
+    const result = await runSeedBatch({
+      inputPath,
+      outDir,
+      csv: false,
+      maxSeedsPerRun: 1,
+      freeRpcMode: true,
+    });
+
+    const deferred = result.tokenResults.find((x) => (x.seed as { label?: string }).label === 'TOKEN_B');
+    expect(deferred?.status).toBe('skipped');
+    expect(deferred?.seedTriageStatus).toBe('deferred');
+    expect(result.seedCuration.drop.some((x) => x.label === 'TOKEN_B')).toBe(false);
+    const keepOrInvestigate = [...result.seedCuration.keep, ...result.seedCuration.investigate];
+    expect(keepOrInvestigate.some((x) => x.label === 'TOKEN_B')).toBe(true);
+  });
 });

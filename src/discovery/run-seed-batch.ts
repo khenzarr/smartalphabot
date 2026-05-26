@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { SupportedChain } from '../chains/chain.types.js';
 import { env } from '../config/env.js';
@@ -86,6 +86,8 @@ export interface CandidateShortlistItem {
 export type SeedTriageStatus =
   | 'keep'
   | 'weak_seed'
+  | 'deferred'
+  | 'pending'
   | 'dense_pool'
   | 'unsupported_pool'
   | 'zero_buyers'
@@ -132,6 +134,11 @@ export interface SeedBatchRunResult {
     getLogsRequestsUsed: number;
     requestBudgetReached: boolean;
     runStopReason?: string;
+    cachedTokenResultsLoaded: number;
+    cachedTokenResultsWritten: number;
+    completedSeedResults: number;
+    pendingSeedResults: number;
+    cumulativeMode: boolean;
   };
   tokenResults: SeedBatchTokenResult[];
   candidates: CandidateWallet[];
@@ -241,6 +248,12 @@ export function deriveSeedTriage(input: {
   }
 
   if (input.status === 'skipped') {
+    if (warningSet.has('seed_deferred_to_next_run')) {
+      return { seedTriageStatus: 'deferred', seedTriageReason: 'deferred_due_to_small_batch_limits' };
+    }
+    if (warningSet.has('seed_pending_checkpoint_resume')) {
+      return { seedTriageStatus: 'pending', seedTriageReason: 'pending_checkpoint_resume' };
+    }
     return { seedTriageStatus: 'weak_seed', seedTriageReason: 'skipped_for_current_phase' };
   }
 
@@ -322,6 +335,48 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function cacheFileNameForSeed(seed: { chain: string; tokenAddress: string }) {
+  return `${seed.chain}-${seed.tokenAddress.toLowerCase()}.json`;
+}
+
+function cacheKey(chain: string, tokenAddress: string) {
+  return `${chain}:${tokenAddress.toLowerCase()}`;
+}
+
+async function loadCachedCompletedTokenResults(cacheDir: string): Promise<SeedBatchTokenResult[]> {
+  try {
+    const entries = await readdir(cacheDir, { withFileTypes: true });
+    const loaded: SeedBatchTokenResult[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      const raw = await readJsonSafe<SeedBatchTokenResult | null>(path.join(cacheDir, entry.name), null);
+      if (!raw || raw.status !== 'success' || !raw.result) continue;
+      const normalized: SeedBatchTokenResult = {
+        ...raw,
+        result: {
+          ...raw.result,
+          tokenProfile: raw.result.tokenProfile
+            ? {
+                ...raw.result.tokenProfile,
+                pairCreatedAt: raw.result.tokenProfile.pairCreatedAt
+                  ? new Date(raw.result.tokenProfile.pairCreatedAt)
+                  : raw.result.tokenProfile.pairCreatedAt,
+              }
+            : raw.result.tokenProfile,
+          earliestBuyers: raw.result.earliestBuyers.map((buyer) => ({
+            ...buyer,
+            firstBuyTimestamp: new Date(buyer.firstBuyTimestamp),
+          })),
+        },
+      };
+      loaded.push(normalized);
+    }
+    return loaded;
+  } catch {
+    return [];
+  }
+}
+
 async function readJsonSafe<T>(filePath: string, fallback: T): Promise<T> {
   try {
     return JSON.parse(await readFile(filePath, 'utf8')) as T;
@@ -351,6 +406,8 @@ function toCuratedSeedItem(
     item.seedTriageStatus === 'weak_seed'
   ) {
     recommendedAction = item.seedTriageStatus === 'dense_pool' ? 'retry_with_smaller_window' : 'drop_from_seed_pool';
+  } else if (item.seedTriageStatus === 'deferred' || item.seedTriageStatus === 'pending') {
+    recommendedAction = 'keep_for_future_batches';
   } else if (item.seedTriageStatus === 'failed') {
     const reason = `${item.seedTriageReason} ${item.error ?? ''}`.toLowerCase();
     if (reason.includes('rpc') || reason.includes('provider') || reason.includes('rate')) {
@@ -410,6 +467,7 @@ function buildSeedCurationLists(input: {
   const drop = curated.filter((x) => dropStatuses.includes(x.seedTriageStatus));
 
   const investigate = curated.filter((x) => {
+    if (x.seedTriageStatus === 'deferred' || x.seedTriageStatus === 'pending') return true;
     if (keep.some((k) => k.chain === x.chain && k.tokenAddress.toLowerCase() === x.tokenAddress.toLowerCase())) return false;
     if (drop.some((d) => d.chain === x.chain && d.tokenAddress.toLowerCase() === x.tokenAddress.toLowerCase())) {
       return x.seedTriageStatus === 'failed' && x.recommendedAction !== 'drop_from_seed_pool';
@@ -617,6 +675,7 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
   const persist = input.persist ?? false;
   const csv = input.csv ?? true;
   const outDir = input.outDir ?? 'output/seed-batch';
+  const tokenResultsCacheDir = path.join(outDir, 'token-results-cache');
   const checkpointPath = path.join('output', 'discovery-checkpoints', 'seed-batch-checkpoint.json');
   const enrichWallets = input.enrichWallets ?? false;
   const walletSource = input.walletSource ?? 'persisted';
@@ -640,7 +699,15 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
   }
 
   await mkdir(outDir, { recursive: true });
+  await mkdir(tokenResultsCacheDir, { recursive: true });
   await mkdir(path.dirname(checkpointPath), { recursive: true });
+
+  const cachedCompletedTokenResults = await loadCachedCompletedTokenResults(tokenResultsCacheDir);
+  const cumulativeBySeedKey = new Map<string, SeedBatchTokenResult>();
+  for (const cached of cachedCompletedTokenResults) {
+    cumulativeBySeedKey.set(cacheKey(cached.seed.chain, cached.seed.tokenAddress), cached);
+  }
+  let cachedTokenResultsWritten = 0;
 
   const checkpoint = await readJsonSafe<SeedBatchCheckpointFile | null>(checkpointPath, null);
   const checkpointEntries = new Map<string, SeedBatchCheckpointEntry>();
@@ -775,6 +842,22 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
         seedTriageReason: triage.seedTriageReason,
       });
 
+      const cacheRecord: SeedBatchTokenResult = {
+        seed,
+        status: 'success',
+        result,
+        warnings: result.warnings,
+        seedTriageStatus: triage.seedTriageStatus,
+        seedTriageReason: triage.seedTriageReason,
+      };
+      cumulativeBySeedKey.set(cacheKey(seed.chain, seed.tokenAddress), cacheRecord);
+      await writeFile(
+        path.join(tokenResultsCacheDir, cacheFileNameForSeed(seed)),
+        safeJsonStringify(cacheRecord, 2),
+        'utf8',
+      );
+      cachedTokenResultsWritten += 1;
+
       if (budgetReachedForSeed || getLogsRequestsUsedTotal >= maxGetLogsRequestsPerRun) {
         requestBudgetReached = true;
         runStopReason = 'request_budget_reached';
@@ -798,19 +881,24 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
 
   const remainingSeeds = validSeeds.filter((seed) => !processedSeedKeys.has(`${seed.chain}:${seed.tokenAddress.toLowerCase()}`));
   for (const seed of remainingSeeds) {
+    const triage = deriveSeedTriage({ status: 'skipped', buyersFound: 0, warnings: ['seed_deferred_to_next_run'] });
     tokenResults.push({
       seed,
       status: 'skipped',
       warnings: ['seed_deferred_to_next_run'],
-      seedTriageStatus: 'weak_seed',
-      seedTriageReason: 'deferred_due_to_small_batch_limits',
+      seedTriageStatus: triage.seedTriageStatus,
+      seedTriageReason: triage.seedTriageReason,
     });
   }
 
+  const cumulativeTokenResults = [...cumulativeBySeedKey.values()];
   const successful = tokenResults.filter((x): x is SuccessfulSeedResult => x.status === 'success' && Boolean(x.result));
+  const cumulativeSuccessful = cumulativeTokenResults.filter(
+    (x): x is SuccessfulSeedResult => x.status === 'success' && Boolean(x.result),
+  );
   const successfulForCandidates = onlyUsefulSeeds
-    ? successful.filter((x) => x.seedTriageStatus === 'keep')
-    : successful;
+    ? cumulativeSuccessful.filter((x) => x.seedTriageStatus === 'keep')
+    : cumulativeSuccessful;
 
   const candidates = aggregateCandidateWallets({
     tokenResults: successfulForCandidates.map((x) => ({ seed: x.seed, result: x.result })),
@@ -877,8 +965,14 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
   }
 
   const uniqueWallets = new Set(
-    successful.flatMap((x) => x.result.earliestBuyers.map((buyer) => `${x.result.chain}:${buyer.walletAddress.toLowerCase()}`)),
+    cumulativeSuccessful.flatMap((x) => x.result.earliestBuyers.map((buyer) => `${x.result.chain}:${buyer.walletAddress.toLowerCase()}`)),
   );
+
+  const completedSeedResults = validSeeds.filter((seed) => {
+    const checkpointEntry = checkpointEntries.get(seed.tokenAddress.toLowerCase());
+    return checkpointEntry?.completed === true;
+  }).length;
+  const pendingSeedResults = validSeeds.length - completedSeedResults;
 
   const result: SeedBatchRunResult = {
     generatedAt: new Date().toISOString(),
@@ -910,6 +1004,11 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
       getLogsRequestsUsed: getLogsRequestsUsedTotal,
       requestBudgetReached,
       runStopReason,
+      cachedTokenResultsLoaded: cachedCompletedTokenResults.length,
+      cachedTokenResultsWritten,
+      completedSeedResults,
+      pendingSeedResults,
+      cumulativeMode: freeRpcMode,
     },
     tokenResults,
     candidates,
@@ -949,12 +1048,12 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
   const candidateShortlistJsonPath = path.join(outDir, 'candidate-shortlist.json');
   const outputIndexPath = path.join(outDir, 'output-index.json');
 
-  const tokenBuyerSummaryRows = buildTokenBuyerSummaryRows(tokenResults);
+  const tokenBuyerSummaryRows = buildTokenBuyerSummaryRows(cumulativeTokenResults);
   const candidateEvidenceRows = buildCandidateEvidenceRows(candidates);
-  const walletOverlapMatrixRows = buildWalletOverlapMatrixRows(successful, includeCrossChainOverlap);
+  const walletOverlapMatrixRows = buildWalletOverlapMatrixRows(cumulativeSuccessful, includeCrossChainOverlap);
   const tokenOverlapSummaryRows = buildTokenOverlapSummaryRows(tokenBuyerSummaryRows, walletOverlapMatrixRows);
   const seedCuration = buildSeedCurationLists({
-    tokenResults,
+    tokenResults: tokenResults,
     tokenOverlapSummaryRows,
     generatedAt: result.generatedAt,
   });
@@ -1061,6 +1160,33 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
     tokenResultsPath,
     safeJsonStringify(
       tokenResults.map((item) => ({
+        seed: item.seed,
+        status: item.status,
+        error: item.error,
+        warnings: item.warnings,
+        seedTriageStatus: item.seedTriageStatus,
+        seedTriageReason: item.seedTriageReason,
+        result: item.result
+          ? {
+              chain: item.result.chain,
+              tokenAddress: item.result.tokenAddress,
+              tokenProfile: item.result.tokenProfile,
+              earliestBuyers: item.result.earliestBuyers,
+              warnings: item.result.warnings,
+              scanMetadata: item.result.scanMetadata,
+              seedRecommendation: item.result.seedRecommendation,
+            }
+          : undefined,
+      })),
+      2,
+    ),
+    'utf8',
+  );
+
+  await writeFile(
+    tokenResultsPath,
+    safeJsonStringify(
+      cumulativeTokenResults.map((item) => ({
         seed: item.seed,
         status: item.status,
         error: item.error,
