@@ -498,6 +498,10 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     }
     }
   } else if (profiledArgs.activityProvider === 'rpc-wallet-activity') {
+    providerAttemptOrder.push('rpc-wallet-activity');
+    providerAttempts['rpc-wallet-activity'] = 'attempted';
+    rpcWalletActivityAttempted = true;
+    addresslessProbeAttempted = true;
     providerModeUsed = 'rpc-wallet-activity';
     const result = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
       wallets,
@@ -506,6 +510,37 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       maxLogsPerWallet: profiledArgs.walletActivityMaxEventsPerWallet,
       blockWindows,
     });
+    const unsupportedError = result.errors.find((e) => e.code === 'addressless_logs_not_supported');
+    const unsupportedDetail = result.failureDetails.find((d) => d.errorKind === 'addressless_logs_not_supported');
+    const providerError = result.errors[0];
+    const providerErrorDetail = result.failureDetails[0];
+    const unsupported = Boolean(unsupportedError || unsupportedDetail);
+    if (unsupported) {
+      rpcWalletActivitySupported = false;
+      addresslessProbeResult = 'unsupported';
+      addresslessProbeErrorKind = unsupportedDetail?.errorKind ?? 'addressless_logs_not_supported';
+      rpcWalletActivityFallbackReason = unsupportedError?.message
+        ?? unsupportedDetail?.shortMessage
+        ?? 'addressless_logs_not_supported';
+    } else if (result.events.length > 0) {
+      rpcWalletActivitySupported = true;
+      addresslessProbeResult = 'supported';
+      addresslessProbeErrorKind = 'none';
+      rpcWalletActivityFallbackReason = 'none';
+      providerAttempts['rpc-wallet-activity'] = 'used';
+    } else if (providerError || providerErrorDetail) {
+      rpcWalletActivitySupported = false;
+      addresslessProbeResult = 'unknown';
+      addresslessProbeErrorKind = providerErrorDetail?.errorKind ?? 'provider_error';
+      rpcWalletActivityFallbackReason = providerError?.message
+        ?? providerErrorDetail?.shortMessage
+        ?? 'provider_error';
+    } else {
+      rpcWalletActivitySupported = true;
+      addresslessProbeResult = 'supported';
+      addresslessProbeErrorKind = 'none';
+      rpcWalletActivityFallbackReason = 'no_events_found';
+    }
     eventsRaw = result.events as EnrichedTokenEvent[];
     combinedStats = result.stats;
     walletScanFailures = result.failureDetails;

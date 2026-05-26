@@ -7,6 +7,7 @@ import {
   buildMonitorArgsFromEnv,
   parseExplorerProvider,
   parseMonitorActivityProvider,
+  parseWalletActivityProfile,
   runOutputDir,
 } from '../monitoring/monitor-runtime.js';
 import { parseBooleanFlagArg } from '../utils/cli-boolean.js';
@@ -53,6 +54,7 @@ export async function executeWorkerPoll(options: {
   now?: Date;
   activityProvider?: MonitorActivityProviderMode;
   explorerProvider?: ExplorerProviderMode;
+  walletActivityProfile?: 'tiny' | 'safe' | 'wide';
 } = {}) {
   const outDir = runOutputDir(env.MONITOR_OUTPUT_DIR, options.now);
   const args = buildMonitorArgsFromEnv({
@@ -68,6 +70,7 @@ export async function executeWorkerPoll(options: {
     maxTxContextLookups: parseNumberFlag('max-tx-context-lookups', env.MONITOR_MAX_TX_CONTEXT_LOOKUPS),
     activityProvider: options.activityProvider,
     explorerProvider: options.explorerProvider,
+    walletActivityProfile: options.walletActivityProfile,
   });
   await runMonitorPoll(args);
   return writeLatestArtifacts(env.MONITOR_OUTPUT_DIR, outDir);
@@ -79,6 +82,7 @@ export async function startMonitorWorker() {
   const dryRun = parseFlag('dry-run', env.MONITOR_DRY_RUN);
   const activityProvider = parseMonitorActivityProvider(parseStringFlag('activity-provider'));
   const explorerProvider = parseExplorerProvider(parseStringFlag('explorer-provider'));
+  const walletActivityProfile = parseWalletActivityProfile(parseStringFlag('wallet-activity-profile'));
 
   const shutdown = (signal: string) => {
     stopped = true;
@@ -103,6 +107,7 @@ export async function startMonitorWorker() {
       bscBlocks: parseNumberFlag('bsc-blocks', env.MONITOR_BSC_BLOCKS),
       getLogsMaxBlockRange: parseNumberFlag('getlogs-max-block-range', env.MONITOR_GETLOGS_MAX_BLOCK_RANGE),
       maxTxContextLookups: parseNumberFlag('max-tx-context-lookups', env.MONITOR_MAX_TX_CONTEXT_LOOKUPS),
+      walletActivityProfile: walletActivityProfile ?? env.MONITOR_WALLET_ACTIVITY_PROFILE,
       intervalSeconds: env.MONITOR_INTERVAL_SECONDS,
       dryRun,
     };
@@ -112,6 +117,7 @@ export async function startMonitorWorker() {
         dryRun,
         activityProvider,
         explorerProvider,
+        walletActivityProfile,
       });
       console.log(`[worker] wallets=${summary.watchedWalletsScanned} events=${summary.eventsFound} signals=${summary.signalsBuilt} alerts=${summary.alertsSent}`);
     } catch (error) {

@@ -1258,8 +1258,103 @@ describe('monitoring MVP', () => {
     const summary = JSON.parse(await readFile(path.join(outDir, 'monitor-summary.json'), 'utf8'));
     expect(summary.providerModeUsed).toBe('rpc-wallet-activity');
     expect(summary.providerFallbackUsed).toBe(false);
+    expect(summary.providerAttemptOrder).toEqual(['rpc-wallet-activity']);
+    expect(summary.providerAttempts['rpc-wallet-activity']).toBe('used');
+    expect(summary.rpcWalletActivityAttempted).toBe(true);
+    expect(summary.rpcWalletActivityFallbackReason).toBe('none');
     expect(summary.rawEventsFound).toBe(1);
     expect(summary.sourceBreakdown['rpc-wallet-activity']).toBe(1);
+  });
+
+  it('rpc-wallet-activity mode with no events marks fallback reason as no_events_found', async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'monitor-poll-rpc-wallet-activity-empty-'));
+    const watchlist = path.join(tmp, 'monitor-wallets.json');
+    const outDir = path.join(tmp, 'out');
+    await writeFile(watchlist, JSON.stringify([{
+      chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 80, category: 'candidate',
+      tokenAppearances: 3, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+      monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+    }]), 'utf8');
+
+    await runMonitorPoll({
+      watchlist,
+      chains: ['base'],
+      maxWallets: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      bscBlocks: 300,
+      out: outDir,
+      activityProvider: 'rpc-wallet-activity',
+      knownTokens: '',
+      telegramDryRun: true,
+      sendTelegram: false,
+      telegramChatId: '',
+    }, {
+      walletActivityProvider: {
+        getRecentIncomingTokenEvents: async () => ({
+          events: [],
+          stats: makeStats({
+            walletsWithActivity: 0,
+            walletsWithNoActivity: 1,
+            walletActivityEventsFound: 0,
+          }),
+          errors: [],
+          failureDetails: [],
+        }),
+      } as never,
+      marketClient: { getTokenProfile: async () => null } as never,
+      sendTelegram: vi.fn(async () => {}),
+    });
+
+    const summary = JSON.parse(await readFile(path.join(outDir, 'monitor-summary.json'), 'utf8'));
+    expect(summary.providerModeUsed).toBe('rpc-wallet-activity');
+    expect(summary.providerAttemptOrder).toEqual(['rpc-wallet-activity']);
+    expect(summary.providerAttempts['rpc-wallet-activity']).toBe('attempted');
+    expect(summary.rpcWalletActivityAttempted).toBe(true);
+    expect(summary.rpcWalletActivityFallbackReason).toBe('no_events_found');
+    expect(summary.addresslessProbeAttempted).toBe(true);
+  });
+
+  it('wallet activity profile tiny is reflected in monitor summary requested and applied fields', async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'monitor-poll-wallet-profile-tiny-'));
+    const watchlist = path.join(tmp, 'monitor-wallets.json');
+    const outDir = path.join(tmp, 'out');
+    await writeFile(watchlist, JSON.stringify([{
+      chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 80, category: 'candidate',
+      tokenAppearances: 3, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+      monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+    }]), 'utf8');
+
+    await runMonitorPoll({
+      watchlist,
+      chains: ['base'],
+      maxWallets: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      bscBlocks: 300,
+      out: outDir,
+      activityProvider: 'rpc-wallet-activity',
+      walletActivityProfile: 'tiny',
+      knownTokens: '',
+      telegramDryRun: true,
+      sendTelegram: false,
+      telegramChatId: '',
+    }, {
+      walletActivityProvider: {
+        getRecentIncomingTokenEvents: async () => ({
+          events: [],
+          stats: makeStats({ walletsWithNoActivity: 1 }),
+          errors: [],
+          failureDetails: [],
+        }),
+      } as never,
+      marketClient: { getTokenProfile: async () => null } as never,
+      sendTelegram: vi.fn(async () => {}),
+    });
+
+    const summary = JSON.parse(await readFile(path.join(outDir, 'monitor-summary.json'), 'utf8'));
+    expect(summary.walletActivityProfileRequested).toBe('tiny');
+    expect(summary.walletActivityProfileApplied).toBe('tiny');
   });
 
   it('etherscan mode without api key warns and does not crash', async () => {
