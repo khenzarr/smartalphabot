@@ -18,9 +18,15 @@ type EvmSupportedChain = 'ethereum' | 'base' | 'bsc';
 export interface ExtractEarlyBuyersInput {
   chain: SupportedChain;
   tokenAddress: string;
+  poolAddress?: string;
+  fromBlockOverride?: bigint;
+  toBlockOverride?: bigint;
   maxBuyers?: number;
   maxHoursAfterCreation?: number;
   maxBlocksAfterCreation?: number;
+  freeRpcMode?: boolean;
+  getLogsMaxBlockRange?: number;
+  maxGetLogsRequestsPerRun?: number;
   persist?: boolean;
   forceParserType?: 'uniswap_v2_compatible' | 'uniswap_v3_compatible';
 }
@@ -90,7 +96,7 @@ export async function extractEarlyBuyers(input: ExtractEarlyBuyersInput): Promis
   }
 
   const tokenProfile = tokenAnalysis.tokenProfile;
-  const poolAddress = tokenProfile.poolAddress ?? tokenProfile.pairAddress;
+  const poolAddress = input.poolAddress ?? tokenProfile.poolAddress ?? tokenProfile.pairAddress;
   if (!poolAddress) {
     warnings.push('pool_address_missing');
     return {
@@ -133,7 +139,9 @@ export async function extractEarlyBuyers(input: ExtractEarlyBuyersInput): Promis
   const client = getEvmPublicClient(chain);
   const latestBlock = await client.getBlockNumber();
 
-  const fromBlock = fromBlockHint ?? (latestBlock > BigInt(maxBlocksAfterCreation) ? latestBlock - BigInt(maxBlocksAfterCreation) : 0n);
+  const fromBlock =
+    input.fromBlockOverride ??
+    (fromBlockHint ?? (latestBlock > BigInt(maxBlocksAfterCreation) ? latestBlock - BigInt(maxBlocksAfterCreation) : 0n));
 
   const hoursTarget = maxHoursAfterCreation * 3600;
   let toBlockByTime = latestBlock;
@@ -143,7 +151,8 @@ export async function extractEarlyBuyers(input: ExtractEarlyBuyersInput): Promis
   }
 
   const toBlockBySpan = fromBlock + BigInt(Math.max(1, maxBlocksAfterCreation));
-  const toBlock = [latestBlock, toBlockBySpan, toBlockByTime].reduce((acc, cur) => (cur < acc ? cur : acc), latestBlock);
+  const computedToBlock = [latestBlock, toBlockBySpan, toBlockByTime].reduce((acc, cur) => (cur < acc ? cur : acc), latestBlock);
+  const toBlock = input.toBlockOverride ?? computedToBlock;
 
   let scanResult: Awaited<ReturnType<typeof scanPoolTrades>>;
   try {
@@ -158,6 +167,9 @@ export async function extractEarlyBuyers(input: ExtractEarlyBuyersInput): Promis
       chunkSize: env.EVM_SCAN_CHUNK_SIZE,
       maxLogs: env.EVM_SCAN_MAX_LOGS,
       maxTrades: env.EVM_SCAN_MAX_TRADES,
+      freeRpcMode: input.freeRpcMode,
+      getLogsMaxBlockRange: input.getLogsMaxBlockRange,
+      maxGetLogsRequestsPerRun: input.maxGetLogsRequestsPerRun,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown_scan_error';

@@ -17,6 +17,10 @@ export interface SeedBatchRunInput {
   maxBuyers?: number;
   maxHoursAfterCreation?: number;
   maxBlocksAfterCreation?: number;
+  freeRpcMode?: boolean;
+  getLogsMaxBlockRange?: number;
+  maxGetLogsRequestsPerRun?: number;
+  maxSeedsPerRun?: number;
   minTokenAppearances?: number;
   persist?: boolean;
   json?: boolean;
@@ -106,6 +110,10 @@ export interface SeedBatchRunResult {
     maxBuyers: number;
     maxHoursAfterCreation: number;
     maxBlocksAfterCreation: number;
+    freeRpcMode: boolean;
+    getLogsMaxBlockRange: number;
+    maxGetLogsRequestsPerRun: number;
+    maxSeedsPerRun: number;
     minTokenAppearances: number;
     persist: boolean;
     enrichWallets: boolean;
@@ -121,18 +129,43 @@ export interface SeedBatchRunResult {
     skipped: number;
     totalUniqueEarlyBuyers: number;
     candidateWalletsFound: number;
+    getLogsRequestsUsed: number;
+    requestBudgetReached: boolean;
+    runStopReason?: string;
   };
   tokenResults: SeedBatchTokenResult[];
   candidates: CandidateWallet[];
   warnings: string[];
   errors: Array<{ tokenAddress: string; chain: string; error: string }>;
   outputFiles: Record<string, string>;
+  checkpoint?: {
+    path: string;
+    resumed: boolean;
+    completed: boolean;
+  };
   seedCuration: {
     keep: CuratedSeedItem[];
     drop: CuratedSeedItem[];
     investigate: CuratedSeedItem[];
   };
   candidateShortlist: CandidateShortlistItem[];
+}
+
+interface SeedBatchCheckpointEntry {
+  tokenAddress: string;
+  poolAddress?: string;
+  nextFromBlock?: string;
+  toBlock?: string;
+  completed: boolean;
+}
+
+interface SeedBatchCheckpointFile {
+  generatedAt: string;
+  runInputPath: string;
+  freeRpcMode: boolean;
+  getLogsMaxBlockRange: number;
+  maxGetLogsRequestsPerRun: number;
+  entries: SeedBatchCheckpointEntry[];
 }
 
 function buildCandidateCsvRows(candidates: CandidateWallet[]) {
@@ -287,6 +320,14 @@ function buildTokenBuyerSummaryRows(tokenResults: SeedBatchTokenResult[]) {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+async function readJsonSafe<T>(filePath: string, fallback: T): Promise<T> {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8')) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 function toCuratedSeedItem(
@@ -568,10 +609,15 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
   const maxBuyers = input.maxBuyers ?? 100;
   const maxHoursAfterCreation = input.maxHoursAfterCreation ?? 6;
   const maxBlocksAfterCreation = input.maxBlocksAfterCreation ?? 20_000;
+  const freeRpcMode = input.freeRpcMode ?? env.DISCOVERY_FREE_RPC_MODE;
+  const getLogsMaxBlockRange = Math.max(1, input.getLogsMaxBlockRange ?? env.DISCOVERY_GETLOGS_MAX_BLOCK_RANGE);
+  const maxGetLogsRequestsPerRun = Math.max(1, input.maxGetLogsRequestsPerRun ?? env.DISCOVERY_MAX_GETLOGS_REQUESTS_PER_RUN);
+  const maxSeedsPerRun = Math.max(1, input.maxSeedsPerRun ?? env.DISCOVERY_MAX_SEEDS_PER_RUN);
   const minTokenAppearances = input.minTokenAppearances ?? 2;
   const persist = input.persist ?? false;
   const csv = input.csv ?? true;
   const outDir = input.outDir ?? 'output/seed-batch';
+  const checkpointPath = path.join('output', 'discovery-checkpoints', 'seed-batch-checkpoint.json');
   const enrichWallets = input.enrichWallets ?? false;
   const walletSource = input.walletSource ?? 'persisted';
   const maxWalletsToEnrich = input.maxWalletsToEnrich ?? 50;
@@ -594,12 +640,21 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
   }
 
   await mkdir(outDir, { recursive: true });
+  await mkdir(path.dirname(checkpointPath), { recursive: true });
+
+  const checkpoint = await readJsonSafe<SeedBatchCheckpointFile | null>(checkpointPath, null);
+  const checkpointEntries = new Map<string, SeedBatchCheckpointEntry>();
+  for (const entry of checkpoint?.entries ?? []) checkpointEntries.set(entry.tokenAddress.toLowerCase(), entry);
+  const resumed = Boolean(checkpoint?.entries?.length);
 
   const tokenResults: SeedBatchTokenResult[] = [];
   const warnings: string[] = [];
   const errors: Array<{ tokenAddress: string; chain: string; error: string }> = [];
 
   let batchJobId: string | undefined;
+  let getLogsRequestsUsedTotal = 0;
+  let requestBudgetReached = false;
+  let runStopReason: string | undefined;
   const batchChain = ((parsedJson.find((x) => x && typeof x === 'object' && typeof x.chain === 'string' && x.chain !== 'solana') as {
     chain?: SupportedChain;
   })?.chain ?? 'ethereum') as SupportedChain;
@@ -649,7 +704,14 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
     validSeeds.push(parsedSeed.data);
   }
 
-  for (const seed of validSeeds) {
+  const pendingSeeds = validSeeds.filter((seed) => {
+    const existing = checkpointEntries.get(seed.tokenAddress.toLowerCase());
+    return !existing?.completed;
+  });
+  const seedsForRun = pendingSeeds.slice(0, maxSeedsPerRun);
+  const processedSeedKeys = new Set<string>();
+  for (const seed of seedsForRun) {
+    processedSeedKeys.add(`${seed.chain}:${seed.tokenAddress.toLowerCase()}`);
     if (seed.chain === 'solana') {
       const warning = 'Solana batch discovery is not implemented yet.';
       warnings.push(`${seed.tokenAddress}: ${warning}`);
@@ -667,10 +729,36 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
       const result = await extractEarlyBuyers({
         chain: seed.chain,
         tokenAddress: seed.tokenAddress,
+        poolAddress: checkpointEntries.get(seed.tokenAddress.toLowerCase())?.poolAddress,
+        fromBlockOverride: checkpointEntries.get(seed.tokenAddress.toLowerCase())?.nextFromBlock
+          ? BigInt(checkpointEntries.get(seed.tokenAddress.toLowerCase())!.nextFromBlock!)
+          : undefined,
+        toBlockOverride: checkpointEntries.get(seed.tokenAddress.toLowerCase())?.toBlock
+          ? BigInt(checkpointEntries.get(seed.tokenAddress.toLowerCase())!.toBlock!)
+          : undefined,
         maxBuyers,
         maxHoursAfterCreation,
         maxBlocksAfterCreation,
+        freeRpcMode,
+        getLogsMaxBlockRange,
+        maxGetLogsRequestsPerRun: Math.max(1, maxGetLogsRequestsPerRun - getLogsRequestsUsedTotal),
         persist,
+      });
+      const scanMetadata = asRecord(result.scanMetadata);
+      const requestsUsed = Number(scanMetadata?.getLogsRequestsUsed ?? 0);
+      getLogsRequestsUsedTotal += Number.isFinite(requestsUsed) ? requestsUsed : 0;
+      const seedPoolAddress =
+        (typeof result.tokenProfile?.poolAddress === 'string' ? result.tokenProfile.poolAddress : undefined) ??
+        (typeof result.tokenProfile?.pairAddress === 'string' ? result.tokenProfile.pairAddress : undefined);
+      const nextFromBlock = scanMetadata?.nextFromBlock;
+      const toBlockFromScan = scanMetadata?.toBlock;
+      const budgetReachedForSeed = scanMetadata?.requestBudgetReached === true || result.warnings.includes('request_budget_reached');
+      checkpointEntries.set(seed.tokenAddress.toLowerCase(), {
+        tokenAddress: seed.tokenAddress,
+        poolAddress: seedPoolAddress,
+        nextFromBlock: nextFromBlock === undefined ? undefined : String(nextFromBlock),
+        toBlock: toBlockFromScan === undefined ? undefined : String(toBlockFromScan),
+        completed: !budgetReachedForSeed,
       });
       const triage = deriveSeedTriage({
         status: 'success',
@@ -686,6 +774,13 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
         seedTriageStatus: triage.seedTriageStatus,
         seedTriageReason: triage.seedTriageReason,
       });
+
+      if (budgetReachedForSeed || getLogsRequestsUsedTotal >= maxGetLogsRequestsPerRun) {
+        requestBudgetReached = true;
+        runStopReason = 'request_budget_reached';
+        warnings.push('request_budget_reached');
+        break;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown_seed_token_error';
       errors.push({ tokenAddress: seed.tokenAddress, chain: seed.chain, error: message });
@@ -699,6 +794,17 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
         seedTriageReason: triage.seedTriageReason,
       });
     }
+  }
+
+  const remainingSeeds = validSeeds.filter((seed) => !processedSeedKeys.has(`${seed.chain}:${seed.tokenAddress.toLowerCase()}`));
+  for (const seed of remainingSeeds) {
+    tokenResults.push({
+      seed,
+      status: 'skipped',
+      warnings: ['seed_deferred_to_next_run'],
+      seedTriageStatus: 'weak_seed',
+      seedTriageReason: 'deferred_due_to_small_batch_limits',
+    });
   }
 
   const successful = tokenResults.filter((x): x is SuccessfulSeedResult => x.status === 'success' && Boolean(x.result));
@@ -782,6 +888,10 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
       maxBuyers,
       maxHoursAfterCreation,
       maxBlocksAfterCreation,
+      freeRpcMode,
+      getLogsMaxBlockRange,
+      maxGetLogsRequestsPerRun,
+      maxSeedsPerRun,
       minTokenAppearances,
       persist,
       enrichWallets,
@@ -797,12 +907,20 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
       skipped: tokenResults.filter((x) => x.status === 'skipped').length,
       totalUniqueEarlyBuyers: uniqueWallets.size,
       candidateWalletsFound: candidates.length,
+      getLogsRequestsUsed: getLogsRequestsUsedTotal,
+      requestBudgetReached,
+      runStopReason,
     },
     tokenResults,
     candidates,
     warnings: [...new Set(warnings.concat(candidates.flatMap((c) => c.warnings)))],
     errors,
     outputFiles: {},
+    checkpoint: {
+      path: checkpointPath,
+      resumed,
+      completed: false,
+    },
     seedCuration: {
       keep: [],
       drop: [],
@@ -861,6 +979,29 @@ export async function runSeedBatch(input: SeedBatchRunInput): Promise<SeedBatchR
     ),
     'utf8',
   );
+
+  const checkpointToWrite: SeedBatchCheckpointFile = {
+    generatedAt: result.generatedAt,
+    runInputPath: input.inputPath,
+    freeRpcMode,
+    getLogsMaxBlockRange,
+    maxGetLogsRequestsPerRun,
+    entries: validSeeds.map((seed) => {
+      const existing = checkpointEntries.get(seed.tokenAddress.toLowerCase());
+      if (existing) return existing;
+      return {
+        tokenAddress: seed.tokenAddress,
+        completed: false,
+      };
+    }),
+  };
+  const allCompleted = checkpointToWrite.entries.every((x) => x.completed);
+  result.checkpoint = {
+    path: checkpointPath,
+    resumed,
+    completed: allCompleted,
+  };
+  await writeFile(checkpointPath, safeJsonStringify(checkpointToWrite, 2), 'utf8');
 
   await writeFile(
     candidateJsonPath,

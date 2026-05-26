@@ -2,10 +2,17 @@ import { parseAbi } from 'viem';
 import type { SupportedChain } from '../../chains/chain.types.js';
 import { normalizeRpcError, withRetry, withRetryOptions } from '../../utils/retry.js';
 import { getEvmPublicClient } from './evm-rpc.client.js';
-import { contextWarning, formatGetLogsError, requestRawEthGetLogs, type GetLogsContext } from './evm-get-logs.js';
+import {
+  contextWarning,
+  formatGetLogsError,
+  isGetLogsBlockRangeRejected,
+  requestRawEthGetLogs,
+  type GetLogsContext,
+} from './evm-get-logs.js';
 import type { ScanPoolTradesInput, ScanPoolTradesResult } from './evm.types.js';
 import { parseUniswapV2Swap, V2_SWAP_TOPIC } from './parsers/uniswap-v2.parser.js';
 import { parseUniswapV3Swap, V3_SWAP_TOPIC } from './parsers/uniswap-v3.parser.js';
+import { env } from '../../config/env.js';
 
 const readAbi = parseAbi(['function token0() view returns (address)', 'function token1() view returns (address)']);
 
@@ -34,9 +41,24 @@ export async function scanPoolTrades(input: ScanPoolTradesInput): Promise<ScanPo
   const cappedToBlock = input.fromBlock + MAX_TOTAL_BLOCK_SPAN < initialToBlock ? input.fromBlock + MAX_TOTAL_BLOCK_SPAN : initialToBlock;
   if (cappedToBlock !== initialToBlock) warnings.push('scan_window_capped_for_safety');
 
-  const chunkSize = input.chunkSize ? BigInt(Math.max(100, input.chunkSize)) : DEFAULT_CHUNK_SIZE;
+  const freeRpcMode = input.freeRpcMode ?? env.DISCOVERY_FREE_RPC_MODE;
+  const getLogsMaxBlockRange = BigInt(
+    Math.max(
+      1,
+      freeRpcMode
+        ? (input.getLogsMaxBlockRange ?? env.DISCOVERY_GETLOGS_MAX_BLOCK_RANGE)
+        : (input.getLogsMaxBlockRange ?? Number(DEFAULT_CHUNK_SIZE)),
+    ),
+  );
+  const requestBudgetLimit = Math.max(1, input.maxGetLogsRequestsPerRun ?? env.DISCOVERY_MAX_GETLOGS_REQUESTS_PER_RUN);
+  const minChunkByMode = freeRpcMode ? 1n : MIN_CHUNK_SIZE;
+  const configuredChunkSize = input.chunkSize ? BigInt(Math.max(1, input.chunkSize)) : DEFAULT_CHUNK_SIZE;
+  const chunkSize = configuredChunkSize > getLogsMaxBlockRange ? getLogsMaxBlockRange : configuredChunkSize;
   const maxLogs = input.maxLogs ?? 10_000;
   const maxTrades = input.maxTrades ?? 2_000;
+  let getLogsRequestsUsed = 0;
+  let requestBudgetReached = false;
+  let nextFromBlock: bigint | undefined;
   let logsScanned = 0;
   let truncated = false;
   let adaptiveChunkingUsed = false;
@@ -77,10 +99,19 @@ export async function scanPoolTrades(input: ScanPoolTradesInput): Promise<ScanPo
     let cursor = current.fromBlock;
 
     while (cursor <= current.toBlock) {
-      const end = cursor + chunkSize > current.toBlock ? current.toBlock : cursor + chunkSize;
+      const spanEnd = cursor + chunkSize > current.toBlock ? current.toBlock : cursor + chunkSize;
+      const end = cursor + getLogsMaxBlockRange - 1n < spanEnd ? cursor + getLogsMaxBlockRange - 1n : spanEnd;
 
       let logs: Awaited<ReturnType<typeof client.getLogs>>;
       try {
+        if (getLogsRequestsUsed >= requestBudgetLimit) {
+          requestBudgetReached = true;
+          warnings.push('request_budget_reached');
+          nextFromBlock = cursor;
+          break;
+        }
+
+        getLogsRequestsUsed += 1;
         logs = await withRetryOptions(
           () =>
             requestRawEthGetLogs(client, {
@@ -99,6 +130,24 @@ export async function scanPoolTrades(input: ScanPoolTradesInput): Promise<ScanPo
           },
         );
       } catch (error) {
+        if (isGetLogsBlockRangeRejected(error)) {
+          const span = end - cursor + 1n;
+          if (span > 10n) {
+            warnings.push('provider_range_rejected_retrying_small_chunks');
+            const splitEnd = cursor + 9n;
+            const splitRanges: BlockRange[] = [
+              { fromBlock: cursor, toBlock: splitEnd > end ? end : splitEnd },
+              { fromBlock: (splitEnd > end ? end : splitEnd) + 1n, toBlock: end },
+            ].filter((x) => x.fromBlock <= x.toBlock);
+            const tailRanges = end < current.toBlock ? [{ fromBlock: end + 1n, toBlock: current.toBlock }] : [];
+            pendingRanges.unshift(...splitRanges, ...tailRanges);
+            adaptiveChunkingUsed = true;
+            chunkReductions += 1;
+            break;
+          }
+          warnings.push('provider_range_rejected_at_minimum_chunk');
+        }
+
         const normalized = normalizeRpcError(error);
         if (normalized.kind !== 'too_many_results') {
           throw new Error(formatGetLogsError(getLogsContext, error));
@@ -110,7 +159,7 @@ export async function scanPoolTrades(input: ScanPoolTradesInput): Promise<ScanPo
         warnings.push('adaptive_chunking_used');
 
         const span = end - cursor + 1n;
-        if (span <= MIN_CHUNK_SIZE) {
+        if (span <= minChunkByMode) {
           minChunkSizeReached = true;
           warnings.push('min_chunk_size_reached');
           failedChunks.push({ fromBlock: cursor, toBlock: end, reason: normalized.rawMessage });
@@ -186,11 +235,11 @@ export async function scanPoolTrades(input: ScanPoolTradesInput): Promise<ScanPo
         }
       }
 
-      if (truncated) break;
+      if (truncated || requestBudgetReached) break;
       cursor = end + 1n;
     }
 
-    if (truncated) break;
+    if (truncated || requestBudgetReached) break;
   }
 
   return {
@@ -212,6 +261,11 @@ export async function scanPoolTrades(input: ScanPoolTradesInput): Promise<ScanPo
       chunkReductions,
       failedChunks,
       minChunkSizeReached,
+      getLogsRequestsUsed,
+      getLogsMaxBlockRangeUsed: Number(getLogsMaxBlockRange),
+      requestBudgetReached,
+      requestBudgetLimit,
+      nextFromBlock,
       warnings,
     },
   };

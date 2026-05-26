@@ -37,6 +37,15 @@ export function formatGetLogsError(context: GetLogsContext, error: unknown): str
   return `getLogsContext:${context}:${normalized.kind}:${normalized.rawMessage}`;
 }
 
+export function isGetLogsBlockRangeRejected(error: unknown): boolean {
+  const normalized = normalizeRpcError(error);
+  const text = normalized.rawMessage.toLowerCase();
+  return (
+    text.includes('eth_getlogs') &&
+    (text.includes('block range') || text.includes('up to 10 block range') || text.includes('range exceeds'))
+  );
+}
+
 export async function requestRawEthGetLogs(
   client: { request: (args: { method: 'eth_getLogs'; params: Array<Record<string, unknown>> }) => Promise<unknown> },
   input: RawEthGetLogsInput,

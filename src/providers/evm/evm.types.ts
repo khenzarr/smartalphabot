@@ -51,6 +51,9 @@ export interface ScanPoolTradesInput {
   maxTrades?: number;
   direction?: 'buy' | 'sell' | 'both';
   chunkSize?: number;
+  getLogsMaxBlockRange?: number;
+  maxGetLogsRequestsPerRun?: number;
+  freeRpcMode?: boolean;
 }
 
 export interface ScanPoolTradesMetadata {
@@ -69,6 +72,11 @@ export interface ScanPoolTradesMetadata {
   chunkReductions?: number;
   failedChunks?: Array<{ fromBlock: bigint; toBlock: bigint; reason: string }>;
   minChunkSizeReached?: boolean;
+  getLogsRequestsUsed?: number;
+  getLogsMaxBlockRangeUsed?: number;
+  requestBudgetReached?: boolean;
+  requestBudgetLimit?: number;
+  nextFromBlock?: bigint;
   warnings: string[];
 }
 

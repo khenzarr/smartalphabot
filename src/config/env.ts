@@ -71,6 +71,11 @@ const schema = z.object({
   DISCOVERY_OUTPUT_DIR: z.string().default('output/discovery-worker'),
   DISCOVERY_MAX_OUTPUT_FILES: z.coerce.number().int().positive().default(50),
   DISCOVERY_MAX_FILE_BYTES: z.coerce.number().int().positive().default(10_000_000),
+  DISCOVERY_FREE_RPC_MODE: booleanEnvWithFallback(false),
+  DISCOVERY_GETLOGS_MAX_BLOCK_RANGE: z.coerce.number().int().positive().default(10),
+  DISCOVERY_MAX_GETLOGS_REQUESTS_PER_RUN: z.coerce.number().int().positive().default(1000),
+  DISCOVERY_MAX_SEEDS_PER_RUN: z.coerce.number().int().positive().default(5),
+  DISCOVERY_MAX_BLOCKS_AFTER_CREATION: z.coerce.number().int().positive().default(2000),
   ALPHA_WALLET_REVIEW_PATH: z.string().default('data/alpha-wallet-review.local.json'),
   MONITOR_KNOWN_TOKENS_MAX: z.coerce.number().int().positive().max(100).default(20),
 });

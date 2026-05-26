@@ -9,6 +9,14 @@ const schema = z.object({
   'max-buyers': z.coerce.number().int().positive().default(100),
   'max-hours': z.coerce.number().positive().default(6),
   'max-blocks': z.coerce.number().int().positive().default(20_000),
+  'free-rpc-mode': z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  'getlogs-max-block-range': z.coerce.number().int().positive().optional(),
+  'max-getlogs-requests-per-run': z.coerce.number().int().positive().optional(),
+  'max-seeds-per-run': z.coerce.number().int().positive().optional(),
+  'max-blocks-after-creation': z.coerce.number().int().positive().optional(),
   'min-token-appearances': z.coerce.number().int().positive().default(2),
   persist: z
     .string()
@@ -258,7 +266,11 @@ async function main() {
     inputPath: input.input,
     maxBuyers: input['max-buyers'],
     maxHoursAfterCreation: input['max-hours'],
-    maxBlocksAfterCreation: input['max-blocks'],
+    maxBlocksAfterCreation: input['max-blocks-after-creation'] ?? input['max-blocks'],
+    freeRpcMode: input['free-rpc-mode'],
+    getLogsMaxBlockRange: input['getlogs-max-block-range'],
+    maxGetLogsRequestsPerRun: input['max-getlogs-requests-per-run'],
+    maxSeedsPerRun: input['max-seeds-per-run'],
     minTokenAppearances: input['min-token-appearances'],
     persist: input.persist,
     json: input.json,
