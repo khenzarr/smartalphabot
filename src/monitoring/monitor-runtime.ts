@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { env, validateMonitorStartupConfig } from '../config/env.js';
 import type { Args } from '../cli/monitor-poll.js';
-import type { EvmSupportedChain, ExplorerProviderMode, MonitorActivityProviderMode } from './monitoring.types.js';
+import type { EvmSupportedChain, ExplorerProviderMode, MonitorActivityProviderMode, WalletActivityProfile } from './monitoring.types.js';
 
 export interface MonitorRuntimeOptions {
   outDir?: string;
@@ -17,6 +17,7 @@ export interface MonitorRuntimeOptions {
   maxTxContextLookups?: number;
   activityProvider?: MonitorActivityProviderMode;
   explorerProvider?: ExplorerProviderMode;
+  walletActivityProfile?: WalletActivityProfile;
 }
 
 const ACTIVITY_PROVIDER_MODES = new Set<MonitorActivityProviderMode>([
@@ -76,6 +77,9 @@ export function buildMonitorArgsFromEnv(options: MonitorRuntimeOptions = {}): Ar
     telegramChatId: env.TELEGRAM_DEFAULT_CHAT_ID,
     txContext: env.MONITOR_TX_CONTEXT,
     maxTxContextLookups: options.maxTxContextLookups ?? env.MONITOR_MAX_TX_CONTEXT_LOOKUPS,
+    walletActivityProfile: options.walletActivityProfile ?? env.MONITOR_WALLET_ACTIVITY_PROFILE,
+    walletActivityMaxEventsPerWallet: env.MONITOR_WALLET_ACTIVITY_MAX_EVENTS_PER_WALLET,
+    walletActivityMaxUniqueTokens: env.MONITOR_WALLET_ACTIVITY_MAX_UNIQUE_TOKENS,
   };
 }
 

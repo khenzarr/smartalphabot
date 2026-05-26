@@ -1,15 +1,26 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const ORIGINAL_ENV = { ...process.env };
+const TEST_TMP_DIRS = new Set<string>();
 
-afterEach(() => {
+async function createIsolatedTmpDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), prefix));
+  TEST_TMP_DIRS.add(dir);
+  return dir;
+}
+
+afterEach(async () => {
   vi.restoreAllMocks();
   vi.resetModules();
   vi.unmock('telegraf');
   process.env = { ...ORIGINAL_ENV };
+  await Promise.all([...TEST_TMP_DIRS].map(async (dir) => {
+    await rm(dir, { recursive: true, force: true });
+  }));
+  TEST_TMP_DIRS.clear();
 });
 
 describe('telegram menu command registration', () => {
@@ -100,7 +111,7 @@ describe('pending input state', () => {
 describe('telegram conversational alpha wallet flow', () => {
   it('handles pending input flow and /cancel through bot handlers', async () => {
     vi.resetModules();
-    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'test-telegram-conversation-'));
+    const tmpDir = await createIsolatedTmpDir('test-telegram-conversation-');
     await mkdir(tmpDir, { recursive: true });
     const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
     const pendingPath = path.join(tmpDir, 'telegram-pending-inputs.local.json');
@@ -108,6 +119,7 @@ describe('telegram conversational alpha wallet flow', () => {
     await writeFile(pendingPath, '[]', 'utf8');
 
     process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
+    process.env.TELEGRAM_PENDING_INPUT_PATH = pendingPath;
     process.env.TELEGRAM_BOT_TOKEN = 'test-token';
 
     vi.spyOn(process, 'once').mockImplementation((((_event: string | symbol, _listener: (...args: any[]) => void) => process) as typeof process.once));
@@ -184,7 +196,7 @@ describe('telegram conversational alpha wallet flow', () => {
 describe('telegram admin command outputs', () => {
   it('review includes top candidates and watch candidates count', async () => {
     vi.resetModules();
-    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'test-telegram-review-output-'));
+    const tmpDir = await createIsolatedTmpDir('test-telegram-review-output-');
     await mkdir(tmpDir, { recursive: true });
     const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
     await writeFile(reviewPath, JSON.stringify([
@@ -198,6 +210,7 @@ describe('telegram admin command outputs', () => {
       },
     ], null, 2), 'utf8');
     process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
+    process.env.TELEGRAM_PENDING_INPUT_PATH = path.join(tmpDir, 'telegram-pending-inputs.local.json');
     process.env.TELEGRAM_BOT_TOKEN = 'test-token';
     vi.spyOn(process, 'once').mockImplementation((((_event: string | symbol, _listener: (...args: any[]) => void) => process) as typeof process.once));
 
@@ -224,7 +237,7 @@ describe('telegram admin command outputs', () => {
 
   it('promote explains non-eligible candidate and supports force mode', async () => {
     vi.resetModules();
-    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'test-telegram-promote-output-'));
+    const tmpDir = await createIsolatedTmpDir('test-telegram-promote-output-');
     await mkdir(tmpDir, { recursive: true });
     const reviewPath = path.join(tmpDir, 'alpha-wallet-review.local.json');
     const watchlistPath = path.join(tmpDir, 'monitor-wallets.json');
@@ -239,6 +252,7 @@ describe('telegram admin command outputs', () => {
     ], null, 2), 'utf8');
 
     process.env.ALPHA_WALLET_REVIEW_PATH = reviewPath;
+    process.env.TELEGRAM_PENDING_INPUT_PATH = path.join(tmpDir, 'telegram-pending-inputs.local.json');
     process.env.MONITOR_WATCHLIST_PATH = watchlistPath;
     process.env.DISCOVERY_AUTO_ADD_MIN_SCORE = '70';
     process.env.TELEGRAM_BOT_TOKEN = 'test-token';

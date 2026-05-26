@@ -3,6 +3,7 @@ import path from 'node:path';
 import { toCsv } from '../utils/csv.js';
 import { safeJsonStringify } from '../utils/json.js';
 import type {
+  DiscoveredTokenCandidate,
   EnrichedTokenEvent,
   EvmSupportedChain,
   ExplorerProviderMode,
@@ -10,6 +11,7 @@ import type {
   MonitorKnownToken,
   MonitorSignal,
   MonitorWalletRecord,
+  WalletActivityProfile,
   WalletScanFailureDetail,
   WalletActivityScanStats,
 } from '../monitoring/monitoring.types.js';
@@ -49,6 +51,9 @@ export interface Args {
   telegramChatId?: string;
   txContext?: boolean;
   maxTxContextLookups?: number;
+  walletActivityProfile?: WalletActivityProfile;
+  walletActivityMaxEventsPerWallet?: number;
+  walletActivityMaxUniqueTokens?: number;
 }
 
 type DeliveryCategory = MonitorSignal['category'];
@@ -68,6 +73,24 @@ function estimateGetLogsChunks(args: Args, wallets: MonitorWalletRecord[], known
     if (!chainWalletCount || !chainTokenCount) continue;
     const chunksPerPair = Math.ceil(Math.max(1, windowsByChain[chain] ?? 1) / range);
     total += chainWalletCount * chainTokenCount * chunksPerPair;
+  }
+  return total;
+}
+
+function estimateWalletActivityChunks(args: Args, wallets: MonitorWalletRecord[]): number {
+  const maxWallets = Math.max(0, Math.min(args.maxWallets, wallets.length));
+  const range = Math.max(1, args.getLogsMaxBlockRange ?? 10);
+  const windowsByChain: Record<EvmSupportedChain, number> = {
+    ethereum: args.ethereumBlocks,
+    base: args.baseBlocks,
+    bsc: args.bscBlocks,
+  };
+  let total = 0;
+  for (const chain of args.chains) {
+    const chainWalletCount = wallets.slice(0, maxWallets).filter((w) => w.enabled !== false && w.chain === chain).length;
+    if (!chainWalletCount) continue;
+    const chunksPerWallet = Math.ceil(Math.max(1, windowsByChain[chain] ?? 1) / range);
+    total += chainWalletCount * chunksPerWallet;
   }
   return total;
 }
@@ -163,7 +186,58 @@ function parseArgs(argv: string[]): Args {
     telegramChatId: read('telegram-chat-id', ''),
     txContext: read('tx-context', 'true') === 'true',
     maxTxContextLookups: Number(read('max-tx-context-lookups', '100')),
+    walletActivityProfile: read('wallet-activity-profile', env.MONITOR_WALLET_ACTIVITY_PROFILE) as WalletActivityProfile,
+    walletActivityMaxEventsPerWallet: Number(read('wallet-activity-max-events-per-wallet', String(env.MONITOR_WALLET_ACTIVITY_MAX_EVENTS_PER_WALLET))),
+    walletActivityMaxUniqueTokens: Number(read('wallet-activity-max-unique-tokens', String(env.MONITOR_WALLET_ACTIVITY_MAX_UNIQUE_TOKENS))),
   };
+}
+
+function clampPositiveInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.floor(value));
+}
+
+function applyWalletActivityProfile(args: Args): Args {
+  const profile = args.walletActivityProfile ?? 'safe';
+  const profileScale = profile === 'tiny' ? 0.25 : profile === 'wide' ? 2 : 1;
+  return {
+    ...args,
+    ethereumBlocks: clampPositiveInt(args.ethereumBlocks * profileScale, args.ethereumBlocks),
+    baseBlocks: clampPositiveInt(args.baseBlocks * profileScale, args.baseBlocks),
+    bscBlocks: clampPositiveInt(args.bscBlocks * profileScale, args.bscBlocks),
+  };
+}
+
+function buildDiscoveredTokenCandidates(events: EnrichedTokenEvent[], createdAt: string): DiscoveredTokenCandidate[] {
+  const map = new Map<string, DiscoveredTokenCandidate>();
+  for (const ev of events) {
+    const key = `${ev.chain}:${ev.tokenAddress.toLowerCase()}`;
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, {
+        chain: ev.chain,
+        tokenAddress: ev.tokenAddress.toLowerCase(),
+        firstSeenAt: ev.observedAt,
+        walletsSeen: [ev.walletAddress.toLowerCase()],
+        txCount: 1,
+        source: ev.source ?? 'rpc-wallet-activity',
+        likelyActivityTypes: ev.transactionContext?.likelyActivityType ? [ev.transactionContext.likelyActivityType] : ['unknown'],
+        riskFlags: [],
+        suggestedAction: 'review',
+        sampleTxHashes: [ev.txHash],
+        createdAt,
+      });
+      continue;
+    }
+    current.txCount += 1;
+    if (!current.walletsSeen.includes(ev.walletAddress.toLowerCase())) current.walletsSeen.push(ev.walletAddress.toLowerCase());
+    const lat = ev.transactionContext?.likelyActivityType ?? 'unknown';
+    if (!current.likelyActivityTypes.includes(lat)) current.likelyActivityTypes.push(lat);
+    if (current.sampleTxHashes.length < 5 && !current.sampleTxHashes.includes(ev.txHash)) current.sampleTxHashes.push(ev.txHash);
+    if (new Date(ev.observedAt).getTime() < new Date(current.firstSeenAt).getTime()) current.firstSeenAt = ev.observedAt;
+    if (current.walletsSeen.length >= 2 && current.txCount >= 2) current.suggestedAction = 'merge_known_tokens';
+  }
+  return [...map.values()];
 }
 
 async function loadKnownTokens(file: string | undefined): Promise<MonitorKnownToken[]> {
@@ -223,6 +297,7 @@ async function sendTelegramIfEnabled(signals: MonitorSignal[], args: Args): Prom
 }
 
 export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>) {
+  const profiledArgs = applyWalletActivityProfile(args);
   const txContextEnabled = args.txContext ?? true;
   const txContextMaxLookups = args.maxTxContextLookups ?? 100;
   const merged: MonitorPollDeps = {
@@ -236,20 +311,39 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     txContextAnalyzerFactory: deps?.txContextAnalyzerFactory ?? ((maxLookups) => new TransactionContextAnalyzer({ maxLookups })),
   };
 
-  const wallets = JSON.parse(await readFile(args.watchlist, 'utf8')) as MonitorWalletRecord[];
-  const knownTokens = await loadKnownTokens(args.knownTokens);
+  const wallets = JSON.parse(await readFile(profiledArgs.watchlist, 'utf8')) as MonitorWalletRecord[];
+  const knownTokens = await loadKnownTokens(profiledArgs.knownTokens);
   const maxGetLogsChunksPerRun = Math.max(1, args.maxGetLogsChunksPerRun ?? 1000);
-  const estimatedChunks = estimateGetLogsChunks(args, wallets, knownTokens);
-  const scanSkippedDueToChunkLimit =
-    args.activityProvider === 'rpc-known-tokens' &&
-    estimatedChunks > maxGetLogsChunksPerRun;
-  const blockWindows = { ethereum: args.ethereumBlocks, base: args.baseBlocks, bsc: args.bscBlocks };
+  const estimatedChunks = estimateGetLogsChunks(profiledArgs, wallets, knownTokens);
+  const walletActivityChunkBudget = maxGetLogsChunksPerRun;
+  const walletActivityEstimatedChunksInitial = estimateWalletActivityChunks(profiledArgs, wallets);
+  let effectiveMaxWallets = profiledArgs.maxWallets;
+  const effectiveBlockWindows = { ethereum: profiledArgs.ethereumBlocks, base: profiledArgs.baseBlocks, bsc: profiledArgs.bscBlocks };
+  let walletActivityWindowReduced = false;
+  if ((profiledArgs.activityProvider === 'rpc-wallet-activity' || profiledArgs.activityProvider === 'auto-indexer') && walletActivityEstimatedChunksInitial > walletActivityChunkBudget) {
+    const ratio = walletActivityChunkBudget / walletActivityEstimatedChunksInitial;
+    effectiveBlockWindows.ethereum = Math.max(1, Math.floor(effectiveBlockWindows.ethereum * ratio));
+    effectiveBlockWindows.base = Math.max(1, Math.floor(effectiveBlockWindows.base * ratio));
+    effectiveBlockWindows.bsc = Math.max(1, Math.floor(effectiveBlockWindows.bsc * ratio));
+    walletActivityWindowReduced = true;
+    const afterWindowReduction = estimateWalletActivityChunks({ ...args, ...effectiveBlockWindows }, wallets);
+    if (afterWindowReduction > walletActivityChunkBudget) {
+      const walletRatio = walletActivityChunkBudget / afterWindowReduction;
+      effectiveMaxWallets = Math.max(1, Math.floor(profiledArgs.maxWallets * walletRatio));
+    }
+  }
+  const walletActivityEstimatedChunks = estimateWalletActivityChunks({ ...profiledArgs, maxWallets: effectiveMaxWallets, ...effectiveBlockWindows }, wallets);
+  const scanSkippedDueToChunkLimit = false;
+  const blockWindows = effectiveBlockWindows;
   const warnings = new Set<string>();
-  const explorerProviderMode = args.explorerProvider ?? 'auto';
-  const explorerMaxPages = args.explorerMaxPages ?? 2;
-  const explorerPageSize = args.explorerPageSize ?? 50;
-  const maxTransfersPerWallet = args.maxTransfersPerWallet ?? 100;
-  let providerModeUsed: MonitorActivityProviderMode | 'none' = args.activityProvider;
+  if (walletActivityWindowReduced || effectiveMaxWallets < profiledArgs.maxWallets) {
+    warnings.add('wallet_activity_profile_reduced_to_fit_chunk_budget');
+  }
+  const explorerProviderMode = profiledArgs.explorerProvider ?? 'auto';
+  const explorerMaxPages = profiledArgs.explorerMaxPages ?? 2;
+  const explorerPageSize = profiledArgs.explorerPageSize ?? 50;
+  const maxTransfersPerWallet = profiledArgs.maxTransfersPerWallet ?? 100;
+  let providerModeUsed: MonitorActivityProviderMode | 'none' = profiledArgs.activityProvider;
   let providerFallbackUsed = false;
   const providerAttemptOrder: Array<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens'> = [];
   const providerAttempts: Partial<Record<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>> = {};
@@ -268,7 +362,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     warnings.add('scan_skipped_due_to_chunk_limit');
     providerModeUsed = 'rpc-known-tokens';
     combinedStats = emptyScanStats(args.chains);
-  } else if (args.activityProvider === 'rpc-known-tokens') {
+  } else if (profiledArgs.activityProvider === 'rpc-known-tokens') {
     providerModeUsed = 'rpc-known-tokens';
     if (!knownTokens.length) {
       warnings.add('known_tokens_required_for_rpc_known_tokens_mode');
@@ -276,23 +370,23 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       const result = await merged.knownTokensProvider.getRecentIncomingTokenEvents({
         wallets,
         chains: args.chains,
-        maxWallets: args.maxWallets,
+        maxWallets: effectiveMaxWallets,
         blockWindows,
         knownTokens,
-        getLogsMaxBlockRange: args.getLogsMaxBlockRange ?? 10,
+        getLogsMaxBlockRange: profiledArgs.getLogsMaxBlockRange ?? 10,
       });
       eventsRaw = result.events as EnrichedTokenEvent[];
       combinedStats = result.stats;
       walletScanFailures = result.failureDetails;
       for (const err of result.errors) warnings.add(err.code);
     }
-  } else if (args.activityProvider === 'explorer') {
+  } else if (profiledArgs.activityProvider === 'explorer') {
     providerModeUsed = 'explorer';
     const result = await merged.explorerProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
-      maxWallets: args.maxWallets,
-      explorerProvider: args.explorerProvider,
+      maxWallets: effectiveMaxWallets,
+      explorerProvider: profiledArgs.explorerProvider,
       explorerMaxPages,
       explorerPageSize,
       maxTransfersPerWallet,
@@ -301,7 +395,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     combinedStats = result.stats;
     walletScanFailures = result.failureDetails;
     for (const err of result.errors) warnings.add(err.code);
-  } else if (args.activityProvider === 'auto-indexer') {
+  } else if (profiledArgs.activityProvider === 'auto-indexer') {
     console.log('[monitor][provider] attempting rpc-wallet-activity');
     providerAttemptOrder.push('rpc-wallet-activity');
     providerAttempts['rpc-wallet-activity'] = 'attempted';
@@ -310,7 +404,8 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     const walletActivityResult = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
-      maxWallets: args.maxWallets,
+      maxWallets: effectiveMaxWallets,
+      maxLogsPerWallet: profiledArgs.walletActivityMaxEventsPerWallet,
       blockWindows,
     });
     const walletActivityUnsupportedError = walletActivityResult.errors.find((e) => e.code === 'addressless_logs_not_supported');
@@ -352,7 +447,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     const explorerResult = await merged.explorerProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
-      maxWallets: args.maxWallets,
+      maxWallets: effectiveMaxWallets,
       explorerProvider: explorerProviderMode,
       explorerMaxPages,
       explorerPageSize,
@@ -373,10 +468,10 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       const fallbackResult = await merged.knownTokensProvider.getRecentIncomingTokenEvents({
         wallets,
         chains: args.chains,
-        maxWallets: args.maxWallets,
+        maxWallets: effectiveMaxWallets,
         blockWindows,
         knownTokens,
-        getLogsMaxBlockRange: args.getLogsMaxBlockRange ?? 10,
+        getLogsMaxBlockRange: profiledArgs.getLogsMaxBlockRange ?? 10,
       });
       providerModeUsed = 'rpc-known-tokens';
       providerFallbackUsed = true;
@@ -392,12 +487,13 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       warnings.add('known_tokens_required_for_auto_indexer_fallback');
     }
     }
-  } else if (args.activityProvider === 'rpc-wallet-activity') {
+  } else if (profiledArgs.activityProvider === 'rpc-wallet-activity') {
     providerModeUsed = 'rpc-wallet-activity';
     const result = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
-      maxWallets: args.maxWallets,
+      maxWallets: effectiveMaxWallets,
+      maxLogsPerWallet: profiledArgs.walletActivityMaxEventsPerWallet,
       blockWindows,
     });
     eventsRaw = result.events as EnrichedTokenEvent[];
@@ -408,7 +504,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     const result = await merged.addresslessProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
-      maxWallets: args.maxWallets,
+      maxWallets: effectiveMaxWallets,
       blockWindows,
     });
     eventsRaw = result.events as EnrichedTokenEvent[];
@@ -419,14 +515,14 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       warnings.add('addressless_logs_not_supported');
       warnings.add('rpc_provider_requires_address_filter');
       warnings.add('use_indexer_or_known_token_mode');
-      if (args.activityProvider === 'auto' && knownTokens.length) {
+      if (profiledArgs.activityProvider === 'auto' && knownTokens.length) {
         const fallbackResult = await merged.knownTokensProvider.getRecentIncomingTokenEvents({
           wallets,
           chains: args.chains,
-          maxWallets: args.maxWallets,
+          maxWallets: effectiveMaxWallets,
           blockWindows,
           knownTokens,
-          getLogsMaxBlockRange: args.getLogsMaxBlockRange ?? 10,
+          getLogsMaxBlockRange: profiledArgs.getLogsMaxBlockRange ?? 10,
         });
         providerModeUsed = 'rpc-known-tokens';
         providerFallbackUsed = true;
@@ -479,6 +575,10 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
   await writeFile(path.join(args.out, 'events.json'), safeJsonStringify(events, 2), 'utf8');
   await writeFile(path.join(args.out, 'signals.json'), safeJsonStringify(signals, 2), 'utf8');
   await writeFile(path.join(args.out, 'wallet-scan-failures.json'), safeJsonStringify(walletScanFailures, 2), 'utf8');
+  const discoveredTokens = buildDiscoveredTokenCandidates(events, new Date().toISOString());
+  await writeFile(path.join(args.out, 'discovered-tokens.json'), safeJsonStringify(discoveredTokens, 2), 'utf8');
+  await mkdir(env.MONITOR_OUTPUT_DIR, { recursive: true });
+  await writeFile(path.join(env.MONITOR_OUTPUT_DIR, 'latest-discovered-tokens.json'), safeJsonStringify(discoveredTokens, 2), 'utf8');
   const csvRows = signals.map((s) => ({
     chain: s.chain,
     tokenAddress: s.tokenAddress,
@@ -504,7 +604,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     'chain', 'tokenAddress', 'symbol', 'name', 'watchedWalletCount', 'txCount', 'uniqueTxCount', 'marketCap', 'liquidityUsd', 'tokenAgeSeconds', 'score', 'category', 'likelyActivityType', 'likelyBuyEventCount', 'airdropOrClaimEventCount', 'knownRouterEventCount', 'contextComposition', 'confidence', 'reasons',
   ]), 'utf8');
 
-  const outputFiles = ['events.json', 'signals.json', 'signals.csv', 'wallet-scan-failures.json', 'monitor-summary.json'];
+  const outputFiles = ['events.json', 'signals.json', 'signals.csv', 'wallet-scan-failures.json', 'discovered-tokens.json', 'monitor-summary.json'];
   const signalsByCategory = {
     strong_signal: signals.filter((s) => s.category === 'strong_signal').length,
     watch_signal: signals.filter((s) => s.category === 'watch_signal').length,
@@ -521,7 +621,9 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     activityProvider: providerModeUsed,
     explorerProvider: explorerProviderMode,
     fallbackUsed: providerFallbackUsed,
-    providerModeRequested: args.activityProvider,
+    providerModeRequested: profiledArgs.activityProvider,
+    walletActivityProfileRequested: args.walletActivityProfile ?? 'safe',
+    walletActivityProfileApplied: profiledArgs.walletActivityProfile ?? 'safe',
     providerModeUsed,
     providerFallbackUsed,
     providerAttemptOrder,
@@ -555,6 +657,10 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     getLogsChunksSucceeded: combinedStats.getLogsChunksSucceeded,
     getLogsChunksFailed: combinedStats.getLogsChunksFailed,
     estimatedChunks,
+    walletActivityEstimatedChunks,
+    walletActivityChunkBudget,
+    walletActivityWindowReduced,
+    walletActivityEffectiveBlockWindows: effectiveBlockWindows,
     maxChunksPerRun: maxGetLogsChunksPerRun,
     scanSkippedDueToChunkLimit,
     walletsWithNoActivity: combinedStats.walletsWithNoActivity,
@@ -588,6 +694,9 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     transferEvents: events.filter((e) => e.transactionContext?.likelyActivityType === 'transfer').length,
     unknownContextEvents: events.filter((e) => !e.transactionContext || e.transactionContext.likelyActivityType === 'unknown').length,
     warnings: [...warnings],
+    discoveredTokensCount: discoveredTokens.length,
+    discoveredTokensByChain: discoveredTokens.reduce((acc, x) => ({ ...acc, [x.chain]: ((acc as Record<string, number>)[x.chain] ?? 0) + 1 }), {} as Partial<Record<EvmSupportedChain, number>>),
+    discoveredTokensOutputFile: path.join(args.out, 'discovered-tokens.json'),
     outputFiles,
   };
   await writeFile(path.join(args.out, 'monitor-summary.json'), safeJsonStringify(summary, 2), 'utf8');

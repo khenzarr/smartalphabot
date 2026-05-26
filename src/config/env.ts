@@ -49,6 +49,7 @@ const schema = z.object({
   MONITOR_BSC_BLOCKS: z.coerce.number().int().positive().default(10000),
   MONITOR_GETLOGS_MAX_BLOCK_RANGE: z.coerce.number().int().positive().default(10),
   MONITOR_MAX_GETLOGS_CHUNKS_PER_RUN: z.coerce.number().int().positive().default(1000),
+  MONITOR_WALLET_ACTIVITY_PROFILE: z.enum(['tiny', 'safe', 'wide']).default('safe'),
   MONITOR_WALLET_ACTIVITY_MAX_EVENTS_PER_WALLET: z.coerce.number().int().positive().default(20),
   MONITOR_WALLET_ACTIVITY_MAX_UNIQUE_TOKENS: z.coerce.number().int().positive().default(30),
   MONITOR_WALLET_ACTIVITY_MIN_VALUE_RAW: z.coerce.number().int().min(0).default(0),

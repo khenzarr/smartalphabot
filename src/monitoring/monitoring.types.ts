@@ -4,6 +4,8 @@ export type EvmSupportedChain = Extract<SupportedChain, 'ethereum' | 'base' | 'b
 
 export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'auto-indexer';
 
+export type WalletActivityProfile = 'tiny' | 'safe' | 'wide';
+
 export type ExplorerProviderMode = 'auto' | 'blockscout' | 'etherscan';
 
 export interface MonitorKnownToken {
@@ -68,8 +70,11 @@ export interface DiscoveredTokenCandidate {
   walletsSeen: string[];
   txCount: number;
   source: 'rpc-wallet-activity' | 'rpc-addressless' | 'explorer' | 'rpc-known-tokens';
+  likelyActivityTypes: LikelyActivityType[];
   riskFlags: string[];
   suggestedAction: 'review' | 'merge_known_tokens';
+  sampleTxHashes: string[];
+  createdAt: string;
 }
 
 export type LikelyActivityType =
@@ -201,6 +206,18 @@ export interface WalletActivityScanStats {
   addresslessProbeAttempted?: boolean;
   addresslessProbeResult?: 'supported' | 'unsupported' | 'unknown';
   addresslessProbeErrorKind?: WalletScanFailureErrorKind | 'none';
+  rpcWalletActivityBlockWindowByChain?: Partial<Record<EvmSupportedChain, number>>;
+  rpcWalletActivityChunksRequested?: number;
+  rpcWalletActivityChunksSucceeded?: number;
+  rpcWalletActivityChunksFailed?: number;
+  rpcWalletActivityRawLogsFound?: number;
+  rpcWalletActivityEventsDecoded?: number;
+  rpcWalletActivityEventsDropped?: number;
+  rpcWalletActivityDropReasons?: Record<string, number>;
+  rpcWalletActivityUniqueTokensByChain?: Partial<Record<EvmSupportedChain, number>>;
+  rpcWalletActivityNoEventWallets?: number;
+  rpcWalletActivityWalletsWithEvents?: number;
+  rpcWalletActivityProviderErrors?: number;
 }
 
 export interface EnrichedTokenEvent extends RecentWalletTokenEvent {

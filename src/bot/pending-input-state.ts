@@ -4,6 +4,10 @@ import path from 'node:path';
 const DEFAULT_PENDING_INPUT_PATH = 'data/telegram-pending-inputs.local.json';
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
+function resolvePendingInputPath(optionsFilePath?: string): string {
+  return optionsFilePath ?? process.env.TELEGRAM_PENDING_INPUT_PATH ?? DEFAULT_PENDING_INPUT_PATH;
+}
+
 export type PendingInputType =
   | 'alpha_wallet_address'
   | 'promote_wallet_address'
@@ -18,7 +22,7 @@ export interface TelegramPendingInput {
   metadata?: Record<string, unknown>;
 }
 
-async function readPendingInputs(filePath = DEFAULT_PENDING_INPUT_PATH): Promise<TelegramPendingInput[]> {
+async function readPendingInputs(filePath: string): Promise<TelegramPendingInput[]> {
   try {
     const raw = await readFile(filePath, 'utf8');
     const parsed = JSON.parse(raw);
@@ -28,7 +32,7 @@ async function readPendingInputs(filePath = DEFAULT_PENDING_INPUT_PATH): Promise
   }
 }
 
-async function writePendingInputs(inputs: TelegramPendingInput[], filePath = DEFAULT_PENDING_INPUT_PATH) {
+async function writePendingInputs(inputs: TelegramPendingInput[], filePath: string) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(inputs, null, 2), 'utf8');
 }
@@ -37,7 +41,7 @@ export function isExpiredPendingInput(input: TelegramPendingInput): boolean {
   return Date.now() >= new Date(input.expiresAt).getTime();
 }
 
-async function readAndPrune(filePath = DEFAULT_PENDING_INPUT_PATH): Promise<TelegramPendingInput[]> {
+async function readAndPrune(filePath: string): Promise<TelegramPendingInput[]> {
   const all = await readPendingInputs(filePath);
   const active = all.filter((x) => !isExpiredPendingInput(x));
   if (active.length !== all.length) {
@@ -56,7 +60,7 @@ export async function setPendingInput(
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   const next: TelegramPendingInput = { chatId, type, createdAt, expiresAt, metadata };
-  const filePath = options?.filePath ?? DEFAULT_PENDING_INPUT_PATH;
+  const filePath = resolvePendingInputPath(options?.filePath);
 
   const active = await readAndPrune(filePath);
   const filtered = active.filter((x) => x.chatId !== chatId);
@@ -66,13 +70,13 @@ export async function setPendingInput(
 }
 
 export async function getPendingInput(chatId: string, options?: { filePath?: string }) {
-  const filePath = options?.filePath ?? DEFAULT_PENDING_INPUT_PATH;
+  const filePath = resolvePendingInputPath(options?.filePath);
   const active = await readAndPrune(filePath);
   return active.find((x) => x.chatId === chatId);
 }
 
 export async function clearPendingInput(chatId: string, options?: { filePath?: string }) {
-  const filePath = options?.filePath ?? DEFAULT_PENDING_INPUT_PATH;
+  const filePath = resolvePendingInputPath(options?.filePath);
   const active = await readAndPrune(filePath);
   const filtered = active.filter((x) => x.chatId !== chatId);
   if (filtered.length !== active.length) {

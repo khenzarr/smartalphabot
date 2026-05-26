@@ -294,6 +294,21 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
 export class RpcWalletActivityProvider extends RpcAddresslessActivityProvider {
   override async getRecentIncomingTokenEvents(input: WalletActivityProviderInput): Promise<WalletActivityProviderResult> {
     const result = await super.getRecentIncomingTokenEvents(input);
+    const byChain: Partial<Record<EvmSupportedChain, number>> = {};
+    const uniqueByChain = new Map<EvmSupportedChain, Set<string>>();
+    for (const ev of result.events) {
+      incrementMap(byChain, ev.chain);
+      if (!uniqueByChain.has(ev.chain)) uniqueByChain.set(ev.chain, new Set());
+      uniqueByChain.get(ev.chain)?.add(ev.tokenAddress.toLowerCase());
+    }
+    const walletsWithEvents = new Set(result.events.map((e) => `${e.chain}:${e.walletAddress.toLowerCase()}`));
+    const selectedWallets = selectCandidateWallets(input);
+    const windows: Partial<Record<EvmSupportedChain, number>> = {
+      ethereum: input.blockWindows?.ethereum ?? 300,
+      base: input.blockWindows?.base ?? 1000,
+      bsc: input.blockWindows?.bsc ?? 1000,
+    };
+    console.log(`[monitor][rpc-wallet-activity] wallets=${selectedWallets.length} events=${result.events.length} failures=${result.stats.walletScanFailures}`);
     return {
       ...result,
       events: result.events.map((event) => ({ ...event, source: 'rpc-wallet-activity' })),
@@ -301,6 +316,21 @@ export class RpcWalletActivityProvider extends RpcAddresslessActivityProvider {
         ...result.stats,
         walletActivityEventsFound: result.events.length,
         walletActivityUniqueTokens: new Set(result.events.map((event) => `${event.chain}:${event.tokenAddress.toLowerCase()}`)).size,
+        rpcWalletActivityRawLogsFound: result.events.length,
+        rpcWalletActivityEventsDecoded: result.events.length,
+        rpcWalletActivityEventsDropped: 0,
+        rpcWalletActivityDropReasons: {},
+        rpcWalletActivityUniqueTokensByChain: Object.fromEntries(
+          [...uniqueByChain.entries()].map(([chain, set]) => [chain, set.size]),
+        ) as Partial<Record<EvmSupportedChain, number>>,
+        rpcWalletActivityWalletsWithEvents: walletsWithEvents.size,
+        rpcWalletActivityNoEventWallets: Math.max(0, selectedWallets.length - walletsWithEvents.size),
+        rpcWalletActivityProviderErrors: result.errors.length,
+        rpcWalletActivityBlockWindowByChain: windows,
+        rpcWalletActivityChunksRequested: result.stats.getLogsChunksRequested ?? 0,
+        rpcWalletActivityChunksSucceeded: result.stats.getLogsChunksSucceeded ?? 0,
+        rpcWalletActivityChunksFailed: result.stats.getLogsChunksFailed ?? 0,
+        walletActivityTokensByChain: byChain,
       },
     };
   }
