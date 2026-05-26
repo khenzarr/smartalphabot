@@ -26,6 +26,7 @@ import {
 } from '../monitoring/wallet-activity-providers.js';
 import { TransactionContextAnalyzer } from '../monitoring/transaction-context.js';
 import { env } from '../config/env.js';
+import { parseExplorerProvider, parseMonitorActivityProvider } from '../monitoring/monitor-runtime.js';
 
 export interface Args {
   watchlist: string;
@@ -149,8 +150,8 @@ function parseArgs(argv: string[]): Args {
     baseBlocks: Number(read('base-blocks', '1000')),
     bscBlocks: Number(read('bsc-blocks', '1000')),
     out: read('out', 'output/monitor-poll-v1'),
-    activityProvider: read('activity-provider', 'auto') as MonitorActivityProviderMode,
-    explorerProvider: read('explorer-provider', 'auto') as ExplorerProviderMode,
+    activityProvider: parseMonitorActivityProvider(read('activity-provider', 'auto')) ?? 'auto',
+    explorerProvider: parseExplorerProvider(read('explorer-provider', 'auto')) ?? 'auto',
     explorerMaxPages: Number(read('explorer-max-pages', '2')),
     explorerPageSize: Number(read('explorer-page-size', '50')),
     maxTransfersPerWallet: Number(read('max-transfers-per-wallet', '100')),
