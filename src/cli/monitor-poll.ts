@@ -227,10 +227,19 @@ function buildDiscoveredTokenCandidates(events: EnrichedTokenEvent[], createdAt:
       map.set(key, {
         chain: ev.chain,
         tokenAddress: ev.tokenAddress.toLowerCase(),
+        symbol: ev.symbol,
+        name: ev.name,
+        decimals: undefined,
+        firstSeenWallet: ev.walletAddress.toLowerCase(),
+        watchedWallets: [ev.walletAddress.toLowerCase()],
+        txHashes: [ev.txHash],
+        blockNumber: ev.blockNumber,
         firstSeenAt: ev.observedAt,
+        source: 'wallet_activity_first',
+
+        // backwards-compatible extra fields
         walletsSeen: [ev.walletAddress.toLowerCase()],
         txCount: 1,
-        source: ev.source ?? 'rpc-wallet-activity',
         likelyActivityTypes: ev.transactionContext?.likelyActivityType ? [ev.transactionContext.likelyActivityType] : ['unknown'],
         riskFlags: [],
         suggestedAction: 'review',
@@ -240,6 +249,9 @@ function buildDiscoveredTokenCandidates(events: EnrichedTokenEvent[], createdAt:
       continue;
     }
     current.txCount += 1;
+    if (!current.watchedWallets.includes(ev.walletAddress.toLowerCase())) current.watchedWallets.push(ev.walletAddress.toLowerCase());
+    if (current.txHashes.length < 5 && !current.txHashes.includes(ev.txHash)) current.txHashes.push(ev.txHash);
+    if (ev.blockNumber < current.blockNumber) current.blockNumber = ev.blockNumber;
     if (!current.walletsSeen.includes(ev.walletAddress.toLowerCase())) current.walletsSeen.push(ev.walletAddress.toLowerCase());
     const lat = ev.transactionContext?.likelyActivityType ?? 'unknown';
     if (!current.likelyActivityTypes.includes(lat)) current.likelyActivityTypes.push(lat);
@@ -256,6 +268,15 @@ async function loadKnownTokens(file: string | undefined): Promise<MonitorKnownTo
   return raw
     .filter((x) => x && typeof x.tokenAddress === 'string' && typeof x.chain === 'string')
     .map((x) => ({ ...x, tokenAddress: x.tokenAddress.toLowerCase() }));
+}
+
+async function loadWalletActivityCursors(file: string, enabled: boolean): Promise<import('../monitoring/monitoring.types.js').WalletActivityCursorState> {
+  if (!enabled) return {};
+  try {
+    return JSON.parse(await readFile(file, 'utf8')) as import('../monitoring/monitoring.types.js').WalletActivityCursorState;
+  } catch {
+    return {};
+  }
 }
 
 async function enrichEvents(events: EnrichedTokenEvent[], market: DexScreenerClient): Promise<EnrichedTokenEvent[]> {
@@ -323,6 +344,9 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
 
   const wallets = JSON.parse(await readFile(profiledArgs.watchlist, 'utf8')) as MonitorWalletRecord[];
   const knownTokens = await loadKnownTokens(profiledArgs.knownTokens);
+  const cursorFile = 'data/monitor-wallet-activity-cursors.local.json';
+  const walletActivityCursorEnabled = env.MONITOR_WALLET_ACTIVITY_CURSOR_ENABLED;
+  const walletActivityCursorState = await loadWalletActivityCursors(cursorFile, walletActivityCursorEnabled);
   const maxGetLogsChunksPerRun = Math.max(1, args.maxGetLogsChunksPerRun ?? 1000);
   const estimatedChunks = estimateGetLogsChunks(profiledArgs, wallets, knownTokens);
   const walletActivityChunkBudget = maxGetLogsChunksPerRun;
@@ -405,7 +429,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     combinedStats = result.stats;
     walletScanFailures = result.failureDetails;
     for (const err of result.errors) warnings.add(err.code);
-  } else if (profiledArgs.activityProvider === 'auto-indexer') {
+  } else if (profiledArgs.activityProvider === 'auto-indexer' || profiledArgs.activityProvider === 'wallet-activity-first') {
     console.log('[monitor][provider] attempting rpc-wallet-activity');
     providerAttemptOrder.push('rpc-wallet-activity');
     providerAttempts['rpc-wallet-activity'] = 'attempted';
@@ -417,6 +441,12 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       maxWallets: effectiveMaxWallets,
       maxLogsPerWallet: profiledArgs.walletActivityMaxEventsPerWallet,
       blockWindows,
+      cursorEnabled: walletActivityCursorEnabled,
+      cursorState: walletActivityCursorState,
+      lookbackByChain: {
+        ethereum: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_ETHEREUM,
+        base: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_BASE,
+      },
     });
     const walletActivityUnsupportedError = walletActivityResult.errors.find((e) => e.code === 'addressless_logs_not_supported');
     const walletActivityUnsupportedDetail = walletActivityResult.failureDetails.find((d) => d.errorKind === 'addressless_logs_not_supported');
@@ -495,6 +525,9 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       walletScanFailures = explorerResult.failureDetails;
       warnings.add('explorer_unavailable');
       warnings.add('known_tokens_required_for_auto_indexer_fallback');
+    }
+    if (walletActivityCursorEnabled && walletActivityResult.cursorState) {
+      await writeFile(cursorFile, safeJsonStringify(walletActivityResult.cursorState, 2), 'utf8');
     }
     }
   } else if (profiledArgs.activityProvider === 'rpc-wallet-activity') {
@@ -663,6 +696,14 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     explorer: events.filter((e) => e.source === 'explorer').length,
   };
   const summary = {
+    walletActivityFirstEnabled: env.MONITOR_WALLET_ACTIVITY_ENABLED,
+    walletActivityWalletsScanned: combinedStats.walletActivityWalletsScanned ?? combinedStats.walletsScanned,
+    walletActivityEventsFound: combinedStats.walletActivityEventsFound ?? eventsRaw.length,
+    walletActivityUniqueTokensFound: combinedStats.walletActivityUniqueTokens ?? new Set(eventsRaw.map((e) => `${e.chain}:${e.tokenAddress.toLowerCase()}`)).size,
+    walletActivityNewTokensFound: discoveredTokens.length,
+    walletActivityCursorLoaded: walletActivityCursorEnabled,
+    walletActivityCursorWritten: walletActivityCursorEnabled,
+    walletActivityProviderFallbackUsed: providerFallbackUsed,
     activityProvider: providerModeUsed,
     explorerProvider: explorerProviderMode,
     fallbackUsed: providerFallbackUsed,
@@ -742,6 +783,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     discoveredTokensCount: discoveredTokens.length,
     discoveredTokensByChain: discoveredTokens.reduce((acc, x) => ({ ...acc, [x.chain]: ((acc as Record<string, number>)[x.chain] ?? 0) + 1 }), {} as Partial<Record<EvmSupportedChain, number>>),
     discoveredTokensOutputFile: path.join(args.out, 'discovered-tokens.json'),
+    walletActivityCursorFile: cursorFile,
     outputFiles,
   };
   await writeFile(path.join(args.out, 'monitor-summary.json'), safeJsonStringify(summary, 2), 'utf8');

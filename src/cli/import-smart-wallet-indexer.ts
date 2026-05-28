@@ -113,7 +113,8 @@ function isSafeAutoPromotable(row: MappedRow): { safe: boolean; reason: 'risk' |
   const actorSubtypes = row.actorSubtypes.trim().toLowerCase();
 
   if (actorType !== 'EOA') return { safe: false, reason: 'type' };
-  if (!(reviewStatus === 'READY_FOR_WATCHLIST' || reviewStatus === 'WATCHLIST_CANDIDATE')) return { safe: false, reason: 'status' };
+  if (!(reviewStatus === 'READY_FOR_WATCHLIST' || reviewStatus === 'WATCHLIST_CANDIDATE' || reviewStatus === 'OBSERVE_ONLY')) return { safe: false, reason: 'status' };
+  if (reviewStatus === 'OBSERVE_ONLY') return { safe: false, reason: 'risk' };
   if (riskLabel && riskLabel !== 'LOW_RISK') return { safe: false, reason: 'risk' };
   if (recommendedAction.includes('observe only')) return { safe: false, reason: 'status' };
   if (rankTier === 'CONTRACT_REVIEW') return { safe: false, reason: 'type' };
