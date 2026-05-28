@@ -28,6 +28,8 @@
     "discovery:latest": "tsx src/cli/discovery-latest.ts",
     "alpha:promote": "tsx src/discovery/promote-alpha-wallets.ts",
     "alpha:import-indexer": "tsx src/cli/import-smart-wallet-indexer.ts",
+    "ops:indexer-sync": "bash ops/run-indexer-sync.sh",
+    "ops:indexer-sync:dry": "SYNC_DRY_RUN=true bash ops/run-indexer-sync.sh",
     "bot:start": "tsx src/bot/start-bot.ts",
     "worker:monitor": "tsx src/worker/monitor-worker.ts",
     "worker:discovery": "tsx src/worker/discovery-worker.ts"
