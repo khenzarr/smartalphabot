@@ -35,10 +35,11 @@ describe('import-smart-wallet-indexer', () => {
     process.env.MONITOR_WATCHLIST_PATH = monitorPath;
 
     const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
-    const result = await runIndexerImport({ input, dryRun: true, maxAdd: 25, includeContractReview: false });
+    const result = await runIndexerImport({ input, dryRun: true, maxAdd: 25, includeContractReview: false, autoPromoteSafe: false });
 
     expect(result.wouldAdd).toBe(1);
     expect(result.added).toBe(0);
+    expect(result.safePromoted).toBe(0);
     const after = JSON.parse(await readFile(alphaPath, 'utf8')) as unknown[];
     expect(after).toHaveLength(0);
   });
@@ -54,7 +55,7 @@ describe('import-smart-wallet-indexer', () => {
     process.env.MONITOR_WATCHLIST_PATH = monitorPath;
 
     const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
-    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false });
+    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
 
     expect(result.added).toBe(1);
     const after = JSON.parse(await readFile(alphaPath, 'utf8')) as Array<Record<string, unknown>>;
@@ -62,6 +63,9 @@ describe('import-smart-wallet-indexer', () => {
     expect(after[0]?.category).toBe('watch_candidate');
     expect(after[0]?.status).toBe('pending_review');
     expect(after[0]?.tags).toContain('observe_only');
+    const monitorAfter = JSON.parse(await readFile(monitorPath, 'utf8')) as Array<Record<string, unknown>>;
+    expect(monitorAfter).toHaveLength(0);
+    expect(result.safePromoted).toBe(0);
   });
 
   it('contract review rows are skipped by default and imported when enabled', async () => {
@@ -76,12 +80,13 @@ describe('import-smart-wallet-indexer', () => {
 
     const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
 
-    const skipped = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false });
+    const skipped = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
     expect(skipped.skippedContractReview).toBe(1);
     expect(skipped.added).toBe(0);
 
-    const imported = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: true });
+    const imported = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: true, autoPromoteSafe: true });
     expect(imported.added).toBe(1);
+    expect(imported.safePromoted).toBe(0);
     const after = JSON.parse(await readFile(alphaPath, 'utf8')) as Array<Record<string, unknown>>;
     expect(after[0]?.category).toBe('needs_review');
     expect(after[0]?.tags).toContain('contract_review');
@@ -107,12 +112,88 @@ describe('import-smart-wallet-indexer', () => {
     process.env.MONITOR_WATCHLIST_PATH = monitorPath;
 
     const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
-    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false });
+    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
 
     expect(result.skippedInfra).toBe(1);
     expect(result.skippedAlreadyReviewed).toBe(1);
     expect(result.skippedAlreadyMonitored).toBe(1);
     expect(result.wouldAdd).toBe(0);
     expect(result.added).toBe(0);
+  });
+
+  it('clean READY_FOR_WATCHLIST EOA auto-promotes when flag true', async () => {
+    const { tmp, alphaPath, monitorPath } = await setupTemp();
+    const input = path.join(tmp, 'final-smart-money-list.csv');
+    await writeFile(input, csv([
+      '0x1234567890123456789012345678901234567890,base,EOA_SMART_MONEY,EOA,TIER_2,TIER_2,85,84,3,25,10,TKN|AAA|BBB,LOW_RISK,READY_FOR_WATCHLIST,Monitor,sample',
+    ]), 'utf8');
+
+    process.env.ALPHA_WALLET_REVIEW_PATH = alphaPath;
+    process.env.MONITOR_WATCHLIST_PATH = monitorPath;
+
+    const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
+    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
+
+    expect(result.safePromoteEligible).toBe(1);
+    expect(result.safePromoted).toBe(1);
+    const monitorAfter = JSON.parse(await readFile(monitorPath, 'utf8')) as Array<Record<string, unknown>>;
+    expect(monitorAfter).toHaveLength(1);
+    expect(monitorAfter[0]?.walletAddress).toBe('0x1234567890123456789012345678901234567890');
+  });
+
+  it('clean WATCHLIST_CANDIDATE EOA auto-promotes when flag true', async () => {
+    const { tmp, alphaPath, monitorPath } = await setupTemp();
+    const input = path.join(tmp, 'final-smart-money-list.csv');
+    await writeFile(input, csv([
+      '0x9999999999999999999999999999999999999999,base,EOA_SMART_MONEY,EOA,TIER_2,TIER_2,80,79,4,40,20,TKN|AAA|BBB,,WATCHLIST_CANDIDATE,Monitor,sample',
+    ]), 'utf8');
+
+    process.env.ALPHA_WALLET_REVIEW_PATH = alphaPath;
+    process.env.MONITOR_WATCHLIST_PATH = monitorPath;
+
+    const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
+    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
+
+    expect(result.safePromoteEligible).toBe(1);
+    expect(result.safePromoted).toBe(1);
+  });
+
+  it('HIGH_RISK_OBSERVE_ONLY is not auto-promoted and is counted as risk skip', async () => {
+    const { tmp, alphaPath, monitorPath } = await setupTemp();
+    const input = path.join(tmp, 'final-smart-money-list.csv');
+    await writeFile(input, csv([
+      '0x7777777777777777777777777777777777777777,base,EOA_SMART_MONEY,EOA,TIER_2,TIER_2,60,59,3,30,20,TKN|AAA|BBB,HIGH_RISK_OBSERVE_ONLY,OBSERVE_ONLY,Observe only,sample',
+    ]), 'utf8');
+
+    process.env.ALPHA_WALLET_REVIEW_PATH = alphaPath;
+    process.env.MONITOR_WATCHLIST_PATH = monitorPath;
+
+    const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
+    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
+
+    expect(result.safePromoted).toBe(0);
+    expect(result.safePromoteSkippedRisk).toBe(1);
+  });
+
+  it('already monitored clean candidate is skipped in safe auto-promote summary', async () => {
+    const { tmp, alphaPath, monitorPath } = await setupTemp();
+    const input = path.join(tmp, 'final-smart-money-list.csv');
+    await writeFile(input, csv([
+      '0x5555555555555555555555555555555555555555,base,EOA_SMART_MONEY,EOA,TIER_2,TIER_2,90,89,5,20,10,TKN|AAA|BBB,LOW_RISK,READY_FOR_WATCHLIST,Monitor,sample',
+    ]), 'utf8');
+
+    await writeFile(monitorPath, JSON.stringify([
+      { chain: 'base', walletAddress: '0x5555555555555555555555555555555555555555' },
+    ], null, 2), 'utf8');
+
+    process.env.ALPHA_WALLET_REVIEW_PATH = alphaPath;
+    process.env.MONITOR_WATCHLIST_PATH = monitorPath;
+
+    const { runIndexerImport } = await import('../src/cli/import-smart-wallet-indexer.js');
+    const result = await runIndexerImport({ input, dryRun: false, maxAdd: 25, includeContractReview: false, autoPromoteSafe: true });
+
+    expect(result.safePromoteEligible).toBe(0);
+    expect(result.safePromoteSkippedAlreadyMonitored).toBe(0);
+    expect(result.skippedAlreadyMonitored).toBe(1);
   });
 });

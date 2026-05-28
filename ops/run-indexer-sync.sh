@@ -7,6 +7,7 @@ LOG_DIR="${LOG_DIR:-/root/smartalphabot/logs/indexer-sync}"
 LOCK_FILE="${LOCK_FILE:-/tmp/smartbot-indexer-sync.lock}"
 SYNC_DRY_RUN="${SYNC_DRY_RUN:-false}"
 MAX_IMPORT_ADD="${MAX_IMPORT_ADD:-25}"
+INDEXER_SYNC_AUTO_PROMOTE_SAFE="${INDEXER_SYNC_AUTO_PROMOTE_SAFE:-false}"
 
 mkdir -p "$LOG_DIR"
 
@@ -20,6 +21,7 @@ echo "INDEXER_DIR=$INDEXER_DIR"
 echo "SMARTBOT_DIR=$SMARTBOT_DIR"
 echo "SYNC_DRY_RUN=$SYNC_DRY_RUN"
 echo "MAX_IMPORT_ADD=$MAX_IMPORT_ADD"
+echo "INDEXER_SYNC_AUTO_PROMOTE_SAFE=$INDEXER_SYNC_AUTO_PROMOTE_SAFE"
 
 if [[ "$SYNC_DRY_RUN" == "true" ]]; then
   IMPORT_DRY_RUN="true"
@@ -53,6 +55,7 @@ echo "[$(date -Is)] importing into SmartAlphaBot alpha review queue"
 npm run alpha:import-indexer -- \
   --input "$CSV_FILE" \
   --dry-run "$IMPORT_DRY_RUN" \
-  --max-add "$MAX_IMPORT_ADD"
+  --max-add "$MAX_IMPORT_ADD" \
+  --auto-promote-safe "$INDEXER_SYNC_AUTO_PROMOTE_SAFE"
 
 echo "[$(date -Is)] smartbot indexer sync finished"

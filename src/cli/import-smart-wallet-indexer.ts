@@ -1,17 +1,18 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { env, parseBooleanEnvValue } from '../config/env.js';
 import { parseCsv } from '../utils/csv.js';
 import { isEvmAddress } from '../utils/address.js';
-import { getAlphaWalletReviewEntries, upsertAlphaWalletReviewEntry } from '../discovery/alpha-wallet-review-store.js';
+import { getAlphaWalletReviewEntries, updateAlphaWalletReviewStatus, upsertAlphaWalletReviewEntry } from '../discovery/alpha-wallet-review-store.js';
 
 interface CliArgs {
   input: string;
   dryRun: boolean;
   maxAdd: number;
   includeContractReview: boolean;
+  autoPromoteSafe: boolean;
 }
 
 interface ImportSummary {
@@ -23,6 +24,13 @@ interface ImportSummary {
   skippedAlreadyMonitored: number;
   wouldAdd: number;
   added: number;
+  autoPromoteSafe: boolean;
+  safePromoteEligible: number;
+  safePromoted: number;
+  safePromoteSkippedRisk: number;
+  safePromoteSkippedStatus: number;
+  safePromoteSkippedType: number;
+  safePromoteSkippedAlreadyMonitored: number;
 }
 
 type MappedCategory = 'high_confidence' | 'watch_candidate' | 'needs_review';
@@ -41,6 +49,14 @@ interface MappedRow {
   tags: string[];
   notes: string;
   sourceFiles: string[];
+  actorType: string;
+  reviewStatus: string;
+  riskLabel: string;
+  recommendedAction: string;
+  rankTier: string;
+  actorCategory: string;
+  contractNames: string;
+  actorSubtypes: string;
 }
 
 function readArg(argv: string[], key: string, fallback: string): string {
@@ -51,11 +67,13 @@ function readArg(argv: string[], key: string, fallback: string): string {
 function parseArgs(argv: string[]): CliArgs {
   const dryRunRaw = readArg(argv, 'dry-run', 'true');
   const includeContractReviewRaw = readArg(argv, 'include-contract-review', 'false');
+  const autoPromoteSafeRaw = readArg(argv, 'auto-promote-safe', 'false');
   return {
     input: readArg(argv, 'input', 'final-smart-money-list.csv'),
     dryRun: parseBooleanEnvValue(dryRunRaw, true),
     maxAdd: Number(readArg(argv, 'max-add', '25')),
     includeContractReview: parseBooleanEnvValue(includeContractReviewRaw, false),
+    autoPromoteSafe: parseBooleanEnvValue(autoPromoteSafeRaw, false),
   };
 }
 
@@ -78,6 +96,35 @@ function isInfraRow(row: Record<string, string>): boolean {
     row.recommendedAction,
   ].join(' ').toLowerCase();
   return ['infra_contract', 'router', 'settler', 'pool', 'proxy', 'bridge'].some((x) => haystack.includes(x));
+}
+
+function hasSubtypeBlockers(actorSubtypes: string): boolean {
+  return ['proxy', 'router', 'pool', 'bridge', 'settler', 'aggregator', 'infra'].some((x) => actorSubtypes.includes(x));
+}
+
+function isSafeAutoPromotable(row: MappedRow): { safe: boolean; reason: 'risk' | 'status' | 'type' } {
+  const reviewStatus = row.reviewStatus.trim();
+  const actorType = row.actorType.trim();
+  const riskLabel = row.riskLabel.trim();
+  const recommendedAction = row.recommendedAction.trim().toLowerCase();
+  const rankTier = row.rankTier.trim();
+  const actorCategory = row.actorCategory.trim();
+  const contractNames = row.contractNames.trim();
+  const actorSubtypes = row.actorSubtypes.trim().toLowerCase();
+
+  if (actorType !== 'EOA') return { safe: false, reason: 'type' };
+  if (!(reviewStatus === 'READY_FOR_WATCHLIST' || reviewStatus === 'WATCHLIST_CANDIDATE')) return { safe: false, reason: 'status' };
+  if (riskLabel && riskLabel !== 'LOW_RISK') return { safe: false, reason: 'risk' };
+  if (recommendedAction.includes('observe only')) return { safe: false, reason: 'status' };
+  if (rankTier === 'CONTRACT_REVIEW') return { safe: false, reason: 'type' };
+  if (actorCategory === 'CONTRACT_OR_EXECUTOR_REVIEW') return { safe: false, reason: 'type' };
+  if (contractNames) return { safe: false, reason: 'type' };
+  if (hasSubtypeBlockers(actorSubtypes)) return { safe: false, reason: 'type' };
+  if ((row.tokenAppearances ?? 0) < 2) return { safe: false, reason: 'status' };
+  if ((row.bestFirstBuyRank ?? Number.POSITIVE_INFINITY) > 50) return { safe: false, reason: 'status' };
+  if ((row.averageFirstBuyRank ?? Number.POSITIVE_INFINITY) > 100) return { safe: false, reason: 'status' };
+
+  return { safe: true, reason: 'status' };
 }
 
 function mapRow(row: Record<string, string>, sourceFile: string, includeContractReview: boolean): MappedRow | 'skip_contract' | 'skip_infra' | null {
@@ -148,6 +195,14 @@ function mapRow(row: Record<string, string>, sourceFile: string, includeContract
     tags,
     notes,
     sourceFiles: [sourceFile],
+    actorType,
+    reviewStatus,
+    riskLabel: row.riskLabel ?? '',
+    recommendedAction: row.recommendedAction ?? '',
+    rankTier: row.rankTier ?? '',
+    actorCategory: row.actorCategory ?? '',
+    contractNames: row.contractNames ?? '',
+    actorSubtypes: row.actorSubtypes ?? '',
   };
 }
 
@@ -187,6 +242,13 @@ export async function runIndexerImport(args: CliArgs): Promise<ImportSummary> {
     skippedAlreadyMonitored: 0,
     wouldAdd: 0,
     added: 0,
+    autoPromoteSafe: args.autoPromoteSafe,
+    safePromoteEligible: 0,
+    safePromoted: 0,
+    safePromoteSkippedRisk: 0,
+    safePromoteSkippedStatus: 0,
+    safePromoteSkippedType: 0,
+    safePromoteSkippedAlreadyMonitored: 0,
   };
 
   const sourceFile = path.resolve(args.input);
@@ -240,6 +302,66 @@ export async function runIndexerImport(args: CliArgs): Promise<ImportSummary> {
       });
       summary.added += 1;
     }
+
+    if (args.autoPromoteSafe) {
+      const watchlistRaw = await readFile(env.MONITOR_WATCHLIST_PATH, 'utf8').catch(() => '[]');
+      const watchlist = JSON.parse(watchlistRaw) as Array<Record<string, unknown>>;
+      const localMonitorSet = new Set(monitorSet);
+
+      for (const c of capped) {
+        const safe = isSafeAutoPromotable(c);
+        if (!safe.safe) {
+          if (safe.reason === 'risk') summary.safePromoteSkippedRisk += 1;
+          else if (safe.reason === 'type') summary.safePromoteSkippedType += 1;
+          else summary.safePromoteSkippedStatus += 1;
+          continue;
+        }
+
+        summary.safePromoteEligible += 1;
+        const key = `${c.chain}:${c.walletAddress}`;
+        if (localMonitorSet.has(key)) {
+          summary.safePromoteSkippedAlreadyMonitored += 1;
+          continue;
+        }
+
+        watchlist.push({
+          chain: c.chain,
+          walletAddress: c.walletAddress,
+          score: c.score ?? 0,
+          category: c.category ?? 'watch_candidate',
+          tokenAppearances: c.tokenAppearances ?? 0,
+          tokensAppearedIn: [],
+          narratives: [],
+          averageFirstBuyRank: c.averageFirstBuyRank ?? 0,
+          bestFirstBuyRank: c.bestFirstBuyRank ?? 0,
+          monitorRecommendation: 'monitor',
+          reasons: c.reasons,
+          riskFlags: c.riskFlags,
+          source: 'smart_wallet_indexer_safe_autopromote',
+          importedAt: new Date().toISOString(),
+          enabled: true,
+          tags: [...new Set([...(c.tags ?? []), 'smart_wallet_indexer', 'safe_auto_promoted'])],
+        });
+
+        await updateAlphaWalletReviewStatus({
+          chain: c.chain,
+          walletAddress: c.walletAddress,
+          status: 'monitoring',
+          promotedBy: 'alpha:import-indexer',
+          promotionReason: 'safe_indexer_auto_promote',
+          promotionSource: 'smart_wallet_indexer',
+          promotedAt: new Date().toISOString(),
+          notes: 'Promoted via alpha:import-indexer safe auto-promote',
+        });
+
+        localMonitorSet.add(key);
+        summary.safePromoted += 1;
+      }
+
+      if (summary.safePromoted > 0) {
+        await writeFile(env.MONITOR_WATCHLIST_PATH, JSON.stringify(watchlist, null, 2), 'utf8');
+      }
+    }
   }
 
   return summary;
@@ -251,6 +373,7 @@ function printSummary(summary: ImportSummary, args: CliArgs) {
   console.log(`- dryRun: ${args.dryRun}`);
   console.log(`- maxAdd: ${args.maxAdd}`);
   console.log(`- includeContractReview: ${args.includeContractReview}`);
+  console.log(`- autoPromoteSafe: ${summary.autoPromoteSafe}`);
   console.log(`- inputRows: ${summary.inputRows}`);
   console.log(`- eligibleRows: ${summary.eligibleRows}`);
   console.log(`- skippedInfra: ${summary.skippedInfra}`);
@@ -259,6 +382,12 @@ function printSummary(summary: ImportSummary, args: CliArgs) {
   console.log(`- skippedAlreadyMonitored: ${summary.skippedAlreadyMonitored}`);
   console.log(`- wouldAdd: ${summary.wouldAdd}`);
   console.log(`- added: ${summary.added}`);
+  console.log(`- safePromoteEligible: ${summary.safePromoteEligible}`);
+  console.log(`- safePromoted: ${summary.safePromoted}`);
+  console.log(`- safePromoteSkippedRisk: ${summary.safePromoteSkippedRisk}`);
+  console.log(`- safePromoteSkippedStatus: ${summary.safePromoteSkippedStatus}`);
+  console.log(`- safePromoteSkippedType: ${summary.safePromoteSkippedType}`);
+  console.log(`- safePromoteSkippedAlreadyMonitored: ${summary.safePromoteSkippedAlreadyMonitored}`);
 }
 
 export async function main() {

@@ -21,5 +21,7 @@ describe('indexer sync ops wiring', () => {
     expect(script).toContain('npm run export:final');
     expect(script).toContain('--dry-run "$IMPORT_DRY_RUN"');
     expect(script).toContain('--max-add "$MAX_IMPORT_ADD"');
+    expect(script).toContain('INDEXER_SYNC_AUTO_PROMOTE_SAFE="${INDEXER_SYNC_AUTO_PROMOTE_SAFE:-false}"');
+    expect(script).toContain('--auto-promote-safe "$INDEXER_SYNC_AUTO_PROMOTE_SAFE"');
   });
 });

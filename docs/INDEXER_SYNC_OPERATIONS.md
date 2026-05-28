@@ -18,9 +18,22 @@ Pipeline steps executed in `/root/smart-wallet-indexer`:
 ## Safety boundaries
 
 - Imports into **review queue only** (`alpha-wallet-review` store).
-- Does **not** auto-promote wallets to `monitor-wallets`.
+- Default mode (`INDEXER_SYNC_AUTO_PROMOTE_SAFE=false`) does **not** auto-promote wallets to `monitor-wallets`.
 - Does **not** change monitor alert policy.
 - Does **not** execute trading logic or private-key behavior.
+
+## Optional safe auto-promote mode (opt-in)
+
+You can optionally enable **safe auto-promote** for clean smart-wallet-indexer EOA candidates:
+
+```bash
+cd /root/smartalphabot
+INDEXER_SYNC_AUTO_PROMOTE_SAFE=true npm run ops:indexer-sync
+```
+
+This remains opt-in and off by default.
+
+Even when enabled, candidates are still imported to alpha review queue first, then only strict-safe candidates are promoted. `OBSERVE_ONLY` and risk-flagged candidates are never auto-promoted.
 
 ## Manual run
 
@@ -70,6 +83,7 @@ Optional environment variables:
 - `LOCK_FILE` (default: `/tmp/smartbot-indexer-sync.lock`)
 - `SYNC_DRY_RUN` (default: `false`)
 - `MAX_IMPORT_ADD` (default: `25`)
+- `INDEXER_SYNC_AUTO_PROMOTE_SAFE` (default: `false`)
 
 ## Rollback / disable
 
