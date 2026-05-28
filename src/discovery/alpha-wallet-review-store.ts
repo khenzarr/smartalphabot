@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../config/env.js';
 
-export type AlphaWalletSource = 'telegram_manual' | 'discovery_worker' | 'imported_shortlist';
+export type AlphaWalletSource = 'telegram_manual' | 'discovery_worker' | 'imported_shortlist' | 'smart_wallet_indexer';
 export type AlphaWalletStatus = 'pending_review' | 'needs_review' | 'high_confidence' | 'accepted' | 'rejected' | 'monitoring';
 export type AlphaWalletCategory = 'high_confidence' | 'watch_candidate' | 'needs_review' | 'rejected';
 
