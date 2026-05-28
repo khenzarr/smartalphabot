@@ -2,7 +2,7 @@ import type { SupportedChain } from '../chains/chain.types.js';
 
 export type EvmSupportedChain = Extract<SupportedChain, 'ethereum' | 'base' | 'bsc'>;
 
-export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'auto-indexer' | 'wallet-activity-first';
+export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'explorer-wallet-activity' | 'auto-indexer' | 'wallet-activity-first';
 
 export type WalletActivityProfile = 'tiny' | 'safe' | 'wide';
 
@@ -59,8 +59,11 @@ export interface RecentWalletTokenEvent {
   observedAt: string;
   warnings: string[];
   walletScore?: number;
-  source?: 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer';
+  source?: 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'explorer-wallet-activity';
   explorerProvider?: Exclude<ExplorerProviderMode, 'auto'>;
+  symbol?: string;
+  name?: string;
+  decimals?: number;
 }
 
 export interface DiscoveredTokenCandidate {
@@ -76,7 +79,7 @@ export interface DiscoveredTokenCandidate {
   firstSeenAt: string;
   walletsSeen: string[];
   txCount: number;
-  source: 'rpc-wallet-activity' | 'rpc-addressless' | 'explorer' | 'rpc-known-tokens' | 'wallet_activity_first';
+  source: 'rpc-wallet-activity' | 'rpc-addressless' | 'explorer' | 'explorer-wallet-activity' | 'rpc-known-tokens' | 'wallet_activity_first';
   likelyActivityTypes: LikelyActivityType[];
   riskFlags: string[];
   suggestedAction: 'review' | 'merge_known_tokens';
@@ -207,8 +210,8 @@ export interface WalletActivityScanStats {
   walletActivityDroppedSpam?: number;
   walletActivityDroppedOverLimit?: number;
   walletActivityProviderWarnings?: string[];
-  providerAttemptOrder?: Array<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens'>;
-  providerAttempts?: Partial<Record<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>>;
+  providerAttemptOrder?: Array<'explorer-wallet-activity' | 'rpc-wallet-activity' | 'rpc-known-tokens'>;
+  providerAttempts?: Partial<Record<'explorer-wallet-activity' | 'rpc-wallet-activity' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>>;
   rpcWalletActivityAttempted?: boolean;
   rpcWalletActivitySupported?: boolean;
   rpcWalletActivityFallbackReason?: string;

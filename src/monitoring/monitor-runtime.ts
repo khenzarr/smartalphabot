@@ -26,6 +26,7 @@ const ACTIVITY_PROVIDER_MODES = new Set<MonitorActivityProviderMode>([
   'rpc-wallet-activity',
   'rpc-known-tokens',
   'explorer',
+  'explorer-wallet-activity',
   'auto-indexer',
   'wallet-activity-first',
 ]);

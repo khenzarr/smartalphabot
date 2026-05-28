@@ -379,8 +379,8 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
   const maxTransfersPerWallet = profiledArgs.maxTransfersPerWallet ?? 100;
   let providerModeUsed: MonitorActivityProviderMode | 'none' = profiledArgs.activityProvider;
   let providerFallbackUsed = false;
-  const providerAttemptOrder: Array<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens'> = [];
-  const providerAttempts: Partial<Record<'rpc-wallet-activity' | 'explorer' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>> = {};
+  const providerAttemptOrder: Array<'explorer-wallet-activity' | 'rpc-wallet-activity' | 'rpc-known-tokens'> = [];
+  const providerAttempts: Partial<Record<'explorer-wallet-activity' | 'rpc-wallet-activity' | 'rpc-known-tokens', 'attempted' | 'used' | 'fallback' | 'skipped'>> = {};
   let rpcWalletActivityAttempted = false;
   let rpcWalletActivitySupported: boolean | undefined;
   let rpcWalletActivityFallbackReason = 'not_attempted';
@@ -414,8 +414,8 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       walletScanFailures = result.failureDetails;
       for (const err of result.errors) warnings.add(err.code);
     }
-  } else if (profiledArgs.activityProvider === 'explorer') {
-    providerModeUsed = 'explorer';
+  } else if (profiledArgs.activityProvider === 'explorer' || profiledArgs.activityProvider === 'explorer-wallet-activity') {
+    providerModeUsed = 'explorer-wallet-activity';
     const result = await merged.explorerProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
@@ -429,61 +429,13 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     combinedStats = result.stats;
     walletScanFailures = result.failureDetails;
     for (const err of result.errors) warnings.add(err.code);
-  } else if (profiledArgs.activityProvider === 'auto-indexer' || profiledArgs.activityProvider === 'wallet-activity-first') {
-    console.log('[monitor][provider] attempting rpc-wallet-activity');
-    providerAttemptOrder.push('rpc-wallet-activity');
-    providerAttempts['rpc-wallet-activity'] = 'attempted';
-    rpcWalletActivityAttempted = true;
-    addresslessProbeAttempted = true;
-    const walletActivityResult = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
-      wallets,
-      chains: args.chains,
-      maxWallets: effectiveMaxWallets,
-      maxLogsPerWallet: profiledArgs.walletActivityMaxEventsPerWallet,
-      blockWindows,
-      cursorEnabled: walletActivityCursorEnabled,
-      cursorState: walletActivityCursorState,
-      lookbackByChain: {
-        ethereum: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_ETHEREUM,
-        base: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_BASE,
-      },
-    });
-    const walletActivityUnsupportedError = walletActivityResult.errors.find((e) => e.code === 'addressless_logs_not_supported');
-    const walletActivityUnsupportedDetail = walletActivityResult.failureDetails.find((d) => d.errorKind === 'addressless_logs_not_supported');
-    const walletActivityUnsupported = Boolean(walletActivityUnsupportedError || walletActivityUnsupportedDetail);
-    if (walletActivityUnsupported) {
-      rpcWalletActivitySupported = false;
-      addresslessProbeResult = 'unsupported';
-      addresslessProbeErrorKind = walletActivityUnsupportedDetail?.errorKind ?? 'addressless_logs_not_supported';
-      rpcWalletActivityFallbackReason = walletActivityUnsupportedError?.message
-        ?? walletActivityUnsupportedDetail?.shortMessage
-        ?? 'addressless_logs_not_supported';
-      console.log(`[monitor][provider] rpc-wallet-activity unsupported: ${rpcWalletActivityFallbackReason}`);
-      console.log('[monitor][provider] falling back to explorer');
-    } else if (walletActivityResult.events.length > 0) {
-      rpcWalletActivitySupported = true;
-      addresslessProbeResult = 'supported';
-      addresslessProbeErrorKind = 'none';
-      rpcWalletActivityFallbackReason = 'none';
-      providerModeUsed = 'rpc-wallet-activity';
-      providerAttempts['rpc-wallet-activity'] = 'used';
-      eventsRaw = walletActivityResult.events as EnrichedTokenEvent[];
-      combinedStats = walletActivityResult.stats;
-      walletScanFailures = walletActivityResult.failureDetails;
-      for (const err of walletActivityResult.errors) warnings.add(err.code);
-    } else {
-      rpcWalletActivitySupported = true;
-      addresslessProbeResult = 'supported';
-      addresslessProbeErrorKind = 'none';
-      rpcWalletActivityFallbackReason = 'no_events_found';
-      console.log('[monitor][provider] falling back to explorer');
+    if (walletActivityCursorEnabled && result.cursorState) {
+      await writeFile(cursorFile, safeJsonStringify(result.cursorState, 2), 'utf8');
     }
-
-    if (providerModeUsed === 'rpc-wallet-activity') {
-      // no-op; already selected above
-    } else {
-      providerAttemptOrder.push('explorer');
-      providerAttempts.explorer = 'attempted';
+  } else if (profiledArgs.activityProvider === 'auto-indexer' || profiledArgs.activityProvider === 'wallet-activity-first') {
+    console.log('[monitor][provider] attempting explorer-wallet-activity');
+    providerAttemptOrder.push('explorer-wallet-activity');
+    providerAttempts['explorer-wallet-activity'] = 'attempted';
     const explorerResult = await merged.explorerProvider.getRecentIncomingTokenEvents({
       wallets,
       chains: args.chains,
@@ -492,16 +444,80 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       explorerMaxPages,
       explorerPageSize,
       maxTransfersPerWallet,
+      cursorEnabled: walletActivityCursorEnabled,
+      cursorState: walletActivityCursorState,
+      lookbackByChain: {
+        ethereum: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_ETHEREUM,
+        base: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_BASE,
+      },
     });
     const explorerUnavailable = explorerResult.errors.some((e) => e.code === 'explorer_unavailable' || e.code === 'explorer_unsupported_chain' || e.code === 'explorer_rate_limited');
     if (explorerResult.events.length > 0 || !explorerUnavailable) {
-      providerModeUsed = 'explorer';
-      providerAttempts.explorer = 'used';
+      providerModeUsed = 'explorer-wallet-activity';
+      providerAttempts['explorer-wallet-activity'] = 'used';
       eventsRaw = explorerResult.events as EnrichedTokenEvent[];
       combinedStats = explorerResult.stats;
       walletScanFailures = explorerResult.failureDetails;
       for (const err of explorerResult.errors) warnings.add(err.code);
-    } else if (knownTokens.length) {
+      if (walletActivityCursorEnabled && explorerResult.cursorState) {
+        await writeFile(cursorFile, safeJsonStringify(explorerResult.cursorState, 2), 'utf8');
+      }
+    } else {
+      providerAttempts['explorer-wallet-activity'] = 'fallback';
+      console.log('[monitor][provider] explorer unavailable; falling back to rpc-wallet-activity');
+    }
+
+    if (providerModeUsed !== 'explorer-wallet-activity') {
+      providerAttemptOrder.push('rpc-wallet-activity');
+      providerAttempts['rpc-wallet-activity'] = 'attempted';
+      rpcWalletActivityAttempted = true;
+      addresslessProbeAttempted = true;
+      const walletActivityResult = await merged.walletActivityProvider.getRecentIncomingTokenEvents({
+        wallets,
+        chains: args.chains,
+        maxWallets: effectiveMaxWallets,
+        maxLogsPerWallet: profiledArgs.walletActivityMaxEventsPerWallet,
+        blockWindows,
+        cursorEnabled: walletActivityCursorEnabled,
+        cursorState: walletActivityCursorState,
+        lookbackByChain: {
+          ethereum: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_ETHEREUM,
+          base: env.MONITOR_WALLET_ACTIVITY_LOOKBACK_BLOCKS_BASE,
+        },
+      });
+      const walletActivityUnsupportedError = walletActivityResult.errors.find((e) => e.code === 'addressless_logs_not_supported');
+      const walletActivityUnsupportedDetail = walletActivityResult.failureDetails.find((d) => d.errorKind === 'addressless_logs_not_supported');
+      const walletActivityUnsupported = Boolean(walletActivityUnsupportedError || walletActivityUnsupportedDetail);
+      if (walletActivityUnsupported) {
+        rpcWalletActivitySupported = false;
+        addresslessProbeResult = 'unsupported';
+        addresslessProbeErrorKind = walletActivityUnsupportedDetail?.errorKind ?? 'addressless_logs_not_supported';
+        rpcWalletActivityFallbackReason = walletActivityUnsupportedError?.message
+          ?? walletActivityUnsupportedDetail?.shortMessage
+          ?? 'addressless_logs_not_supported';
+      } else if (walletActivityResult.events.length > 0) {
+        rpcWalletActivitySupported = true;
+        addresslessProbeResult = 'supported';
+        addresslessProbeErrorKind = 'none';
+        rpcWalletActivityFallbackReason = 'none';
+        providerModeUsed = 'rpc-wallet-activity';
+        providerAttempts['rpc-wallet-activity'] = 'used';
+        eventsRaw = walletActivityResult.events as EnrichedTokenEvent[];
+        combinedStats = walletActivityResult.stats;
+        walletScanFailures = walletActivityResult.failureDetails;
+        for (const err of walletActivityResult.errors) warnings.add(err.code);
+        if (walletActivityCursorEnabled && walletActivityResult.cursorState) {
+          await writeFile(cursorFile, safeJsonStringify(walletActivityResult.cursorState, 2), 'utf8');
+        }
+      } else {
+        rpcWalletActivitySupported = true;
+        addresslessProbeResult = 'supported';
+        addresslessProbeErrorKind = 'none';
+        rpcWalletActivityFallbackReason = 'no_events_found';
+      }
+    }
+
+    if (providerModeUsed !== 'explorer-wallet-activity' && providerModeUsed !== 'rpc-wallet-activity' && knownTokens.length) {
       console.log('[monitor][provider] falling back to rpc-known-tokens');
       providerAttemptOrder.push('rpc-known-tokens');
       providerAttempts['rpc-known-tokens'] = 'fallback';
@@ -519,16 +535,11 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
       combinedStats = fallbackResult.stats;
       walletScanFailures = fallbackResult.failureDetails;
       warnings.add('explorer_unavailable');
-    } else {
+    } else if (providerModeUsed !== 'explorer-wallet-activity' && providerModeUsed !== 'rpc-wallet-activity') {
       providerModeUsed = 'none';
-      combinedStats = explorerResult.stats;
-      walletScanFailures = explorerResult.failureDetails;
+      // preserve the latest provider stats already collected above
       warnings.add('explorer_unavailable');
       warnings.add('known_tokens_required_for_auto_indexer_fallback');
-    }
-    if (walletActivityCursorEnabled && walletActivityResult.cursorState) {
-      await writeFile(cursorFile, safeJsonStringify(walletActivityResult.cursorState, 2), 'utf8');
-    }
     }
   } else if (profiledArgs.activityProvider === 'rpc-wallet-activity') {
     providerAttemptOrder.push('rpc-wallet-activity');
@@ -690,6 +701,7 @@ export async function runMonitorPoll(args: Args, deps?: Partial<MonitorPollDeps>
     ignored: signals.filter((s) => s.category === 'ignored').length,
   };
   const sourceBreakdown = {
+    'explorer-wallet-activity': events.filter((e) => e.source === 'explorer-wallet-activity').length,
     'rpc-wallet-activity': events.filter((e) => e.source === 'rpc-wallet-activity').length,
     'rpc-known-tokens': events.filter((e) => e.source === 'rpc-known-tokens').length,
     'rpc-addressless': events.filter((e) => e.source === 'rpc-addressless').length,

@@ -1286,7 +1286,7 @@ describe('monitoring MVP', () => {
     expect(summary.providerModeUsed).toBe('rpc-known-tokens');
     expect(summary.providerFallbackUsed).toBe(true);
     expect(summary.fallbackUsed).toBe(true);
-    expect(summary.providerAttemptOrder).toEqual(['rpc-wallet-activity', 'explorer', 'rpc-known-tokens']);
+    expect(summary.providerAttemptOrder).toEqual(['explorer-wallet-activity', 'rpc-wallet-activity', 'rpc-known-tokens']);
     expect(summary.rpcWalletActivityAttempted).toBe(true);
     expect(summary.rpcWalletActivitySupported).toBe(false);
     expect(summary.rpcWalletActivityFallbackReason).toContain('rpc rejects addressless getLogs');
@@ -1350,6 +1350,133 @@ describe('monitoring MVP', () => {
     expect(summary.rpcWalletActivityFallbackReason).toBe('none');
     expect(summary.rawEventsFound).toBe(1);
     expect(summary.sourceBreakdown['rpc-wallet-activity']).toBe(1);
+  });
+
+  it('auto-indexer prefers explorer-wallet-activity and can discover token outside known-token list', async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'monitor-poll-auto-indexer-explorer-first-'));
+    const watchlist = path.join(tmp, 'monitor-wallets.json');
+    const knownTokensFile = path.join(tmp, 'known-tokens.json');
+    const outDir = path.join(tmp, 'out');
+    await writeFile(watchlist, JSON.stringify([{
+      chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 80, category: 'candidate',
+      tokenAppearances: 3, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+      monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+    }]), 'utf8');
+    await writeFile(knownTokensFile, JSON.stringify([{ chain: 'base', tokenAddress: '0x00000000000000000000000000000000000000aa', symbol: 'KNOWN' }]), 'utf8');
+
+    const knownTokensProviderSpy = vi.fn(async () => ({
+      events: [],
+      stats: makeStats(),
+      errors: [],
+      failureDetails: [],
+    }));
+
+    await runMonitorPoll({
+      watchlist,
+      chains: ['base'],
+      maxWallets: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      bscBlocks: 300,
+      out: outDir,
+      activityProvider: 'auto-indexer',
+      explorerProvider: 'blockscout',
+      knownTokens: knownTokensFile,
+      telegramDryRun: true,
+      sendTelegram: false,
+      telegramChatId: '',
+    }, {
+      explorerProvider: {
+        getRecentIncomingTokenEvents: async () => ({
+          events: [{
+            chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', tokenAddress: '0x00000000000000000000000000000000000000bb',
+            from: '0x2', to: '0x1', rawAmount: '0x1', txHash: `0x${'22'.repeat(32)}`, blockNumber: 2, logIndex: 0,
+            observedAt: '2026-01-01T00:00:00.000Z', warnings: [], source: 'explorer-wallet-activity', walletScore: 80,
+          }],
+          stats: makeStats({
+            walletsWithActivity: 1,
+            walletsWithNoActivity: 0,
+            explorerRequests: 1,
+            explorerTransfersFetched: 1,
+          }),
+          errors: [],
+          failureDetails: [],
+          cursorState: {
+            'base:0x0000000000000000000000000000000000000001:explorer': {
+              lastSeenBlockNumber: 2,
+              lastSeenTxHash: `0x${'22'.repeat(32)}`,
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        }),
+      } as never,
+      walletActivityProvider: {
+        getRecentIncomingTokenEvents: async () => ({ events: [], stats: makeStats(), errors: [], failureDetails: [] }),
+      } as never,
+      knownTokensProvider: {
+        getRecentIncomingTokenEvents: knownTokensProviderSpy,
+      } as never,
+      marketClient: { getTokenProfile: async () => null } as never,
+      sendTelegram: vi.fn(async () => {}),
+    });
+
+    const summary = JSON.parse(await readFile(path.join(outDir, 'monitor-summary.json'), 'utf8'));
+    expect(summary.providerModeUsed).toBe('explorer-wallet-activity');
+    expect(summary.providerAttemptOrder).toEqual(['explorer-wallet-activity']);
+    expect(summary.sourceBreakdown['explorer-wallet-activity']).toBe(1);
+    expect(summary.discoveredTokensCount).toBe(1);
+    expect(knownTokensProviderSpy).not.toHaveBeenCalled();
+
+    const discovered = JSON.parse(await readFile(path.join(outDir, 'discovered-tokens.json'), 'utf8'));
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0]?.tokenAddress).toBe('0x00000000000000000000000000000000000000bb');
+  });
+
+  it('ignored signals remain undelivered by default in dry-run', async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'monitor-poll-ignored-undelivered-'));
+    const watchlist = path.join(tmp, 'monitor-wallets.json');
+    const outDir = path.join(tmp, 'out');
+    await writeFile(watchlist, JSON.stringify([{
+      chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', score: 80, category: 'candidate',
+      tokenAppearances: 3, tokensAppearedIn: [], narratives: [], averageFirstBuyRank: 1, bestFirstBuyRank: 1,
+      monitorRecommendation: '', reasons: [], riskFlags: [], source: 'candidate_shortlist', importedAt: '', enabled: true, tags: [],
+    }]), 'utf8');
+
+    await runMonitorPoll({
+      watchlist,
+      chains: ['base'],
+      maxWallets: 20,
+      ethereumBlocks: 100,
+      baseBlocks: 300,
+      bscBlocks: 300,
+      out: outDir,
+      activityProvider: 'explorer-wallet-activity',
+      explorerProvider: 'blockscout',
+      knownTokens: '',
+      telegramDryRun: true,
+      sendTelegram: false,
+      telegramChatId: '',
+    }, {
+      explorerProvider: {
+        getRecentIncomingTokenEvents: async () => ({
+          events: [{
+            chain: 'base', walletAddress: '0x0000000000000000000000000000000000000001', tokenAddress: '0x00000000000000000000000000000000000000cc',
+            from: '0x2', to: '0x1', rawAmount: '0x1', txHash: `0x${'33'.repeat(32)}`, blockNumber: 2, logIndex: 0,
+            observedAt: '2026-01-01T00:00:00.000Z', warnings: [], source: 'explorer-wallet-activity', walletScore: 80, symbol: 'USDC',
+          }],
+          stats: makeStats({ walletsWithActivity: 1, walletsWithNoActivity: 0 }),
+          errors: [],
+          failureDetails: [],
+        }),
+      } as never,
+      marketClient: { getTokenProfile: async () => null } as never,
+      sendTelegram: vi.fn(async () => {}),
+    });
+
+    const summary = JSON.parse(await readFile(path.join(outDir, 'monitor-summary.json'), 'utf8'));
+    expect(summary.ignoredSignals).toBeGreaterThanOrEqual(1);
+    expect(summary.eligibleSignalsForDelivery).toBe(0);
+    expect(summary.alertsSent).toBe(0);
   });
 
   it('rpc-wallet-activity mode with no events marks fallback reason as no_events_found', async () => {

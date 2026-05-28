@@ -712,6 +712,7 @@ export class ExplorerTokenTransferProvider implements IWalletActivityProvider {
     const events: RecentWalletTokenEvent[] = [];
     const errors: WalletActivityErrorInfo[] = [];
     const failureDetails: WalletScanFailureDetail[] = [];
+    const nextCursorState: WalletActivityCursorState = { ...(input.cursorState ?? {}) };
     const explorerWarnings = new Set<string>();
     const explorerFailuresByChain: Partial<Record<EvmSupportedChain, number>> = {};
 
@@ -737,6 +738,12 @@ export class ExplorerTokenTransferProvider implements IWalletActivityProvider {
       stats.walletsScanned += 1;
       incrementMap(stats.scannedWalletsByChain, wallet.chain);
 
+      const cursorKey = `${wallet.chain}:${wallet.walletAddress.toLowerCase()}:explorer`;
+      let latestBlockForWallet = 0;
+      const lookback = input.lookbackByChain?.[wallet.chain] ?? 300;
+      const cursorLast = input.cursorEnabled ? Number(input.cursorState?.[cursorKey]?.lastScannedBlock ?? -1) : -1;
+      const fromBlock = cursorLast >= 0 ? cursorLast + 1 : 0;
+
       const result = await fetchWalletTransfersWithExplorer(
         {
           provider: providerMode,
@@ -746,6 +753,7 @@ export class ExplorerTokenTransferProvider implements IWalletActivityProvider {
         {
           chain: wallet.chain,
           walletAddress: wallet.walletAddress,
+          fromBlock,
           maxPages,
           pageSize,
           maxTransfersPerWallet,
@@ -755,9 +763,29 @@ export class ExplorerTokenTransferProvider implements IWalletActivityProvider {
 
       stats.explorerRequests += result.requests;
       stats.explorerTransfersFetched += result.transfersFetched;
-      for (const ev of result.events) events.push({ ...ev, walletScore: wallet.score });
+      const boundedEvents = result.events
+        .filter((ev) => {
+          if (cursorLast < 0) return true;
+          return ev.blockNumber >= fromBlock;
+        })
+        .slice(0, Math.max(1, maxTransfersPerWallet));
 
-      if (result.events.length > 0) {
+      for (const ev of boundedEvents) {
+        events.push({ ...ev, walletScore: wallet.score, source: 'explorer-wallet-activity' });
+        if (ev.blockNumber > latestBlockForWallet) latestBlockForWallet = ev.blockNumber;
+      }
+
+      if (input.cursorEnabled) {
+        const effectiveLast = latestBlockForWallet > 0
+          ? latestBlockForWallet
+          : (cursorLast >= 0 ? cursorLast : lookback);
+        nextCursorState[cursorKey] = {
+          lastScannedBlock: effectiveLast,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      if (boundedEvents.length > 0) {
         stats.walletsWithActivity += 1;
       } else if (result.errors.length === 0) {
         stats.walletsWithNoActivity += 1;
@@ -796,6 +824,6 @@ export class ExplorerTokenTransferProvider implements IWalletActivityProvider {
     stats.warnings.push(...stats.explorerWarnings);
     stats.walletScanFailureDetailsCount = failureDetails.length;
 
-    return { events, stats, errors, failureDetails };
+    return { events, stats, errors, failureDetails, cursorState: input.cursorEnabled ? nextCursorState : undefined };
   }
 }
