@@ -18,6 +18,7 @@ import type {
   WalletScanFailureDetail,
   WalletScanFailureErrorKind,
   WalletActivityScanStats,
+  WalletActivityCursorState,
 } from './monitoring.types.js';
 import { env } from '../config/env.js';
 import {
@@ -39,6 +40,9 @@ export interface WalletActivityProviderInput {
   maxTransfersPerWallet?: number;
   fetcher?: ExplorerFetchLike;
   getLogsMaxBlockRange?: number;
+  cursorEnabled?: boolean;
+  cursorState?: WalletActivityCursorState;
+  lookbackByChain?: Partial<Record<EvmSupportedChain, number>>;
 }
 
 export interface WalletActivityProviderResult {
@@ -46,6 +50,7 @@ export interface WalletActivityProviderResult {
   stats: WalletActivityScanStats;
   errors: WalletActivityErrorInfo[];
   failureDetails: WalletScanFailureDetail[];
+  cursorState?: WalletActivityCursorState;
 }
 
 export interface IWalletActivityProvider {
@@ -292,6 +297,7 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
     const errors: WalletActivityErrorInfo[] = [];
     const failureDetails: WalletScanFailureDetail[] = [];
     const stats = baseStats(input.chains);
+    const nextCursorState: WalletActivityCursorState = { ...(input.cursorState ?? {}) };
 
     for (const wallet of candidates) {
       console.log(`[monitor][progress] wallet ${stats.walletsScanned + 1}/${candidates.length} chain=${wallet.chain} provider=rpc-addressless events=${events.length}`);
@@ -305,7 +311,15 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
       } | null = null;
       try {
         const latest = await client.getBlockNumber();
-        const fromBlock = latest > BigInt(blockWindows[wallet.chain]) ? latest - BigInt(blockWindows[wallet.chain]) : 0n;
+        const cursorKey = `${wallet.chain}:${wallet.walletAddress.toLowerCase()}`;
+        const lookback = BigInt(input.lookbackByChain?.[wallet.chain] ?? blockWindows[wallet.chain]);
+        const fromBlockFromLookback = latest > lookback ? latest - lookback : 0n;
+        const cursorLast = input.cursorEnabled ? BigInt(input.cursorState?.[cursorKey]?.lastScannedBlock ?? -1) : -1n;
+        const fromBlock = cursorLast >= 0n ? (cursorLast + 1n) : fromBlockFromLookback;
+        if (fromBlock > latest) {
+          stats.walletsWithNoActivity += 1;
+          continue;
+        }
         requestPayload = buildAddresslessGetLogsPayload({
           walletAddress: wallet.walletAddress,
           fromBlock,
@@ -326,6 +340,12 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
         }>;
         stats.addresslessLogsSupported = 'true';
         for (const log of logs.slice(0, maxLogsPerWallet)) events.push(decodeLog(log, wallet));
+        if (input.cursorEnabled) {
+          nextCursorState[cursorKey] = {
+            lastScannedBlock: Number(latest),
+            updatedAt: new Date().toISOString(),
+          };
+        }
       } catch (error) {
         stats.walletScanFailures += 1;
         stats.walletsWithFailures += 1;
@@ -383,7 +403,7 @@ export class RpcAddresslessActivityProvider implements IWalletActivityProvider {
 
     stats.walletScanFailureDetailsCount = failureDetails.length;
 
-    return { events, stats, errors, failureDetails };
+    return { events, stats, errors, failureDetails, cursorState: input.cursorEnabled ? nextCursorState : undefined };
   }
 }
 

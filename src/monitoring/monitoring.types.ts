@@ -2,7 +2,7 @@ import type { SupportedChain } from '../chains/chain.types.js';
 
 export type EvmSupportedChain = Extract<SupportedChain, 'ethereum' | 'base' | 'bsc'>;
 
-export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'auto-indexer';
+export type MonitorActivityProviderMode = 'auto' | 'rpc-addressless' | 'rpc-wallet-activity' | 'rpc-known-tokens' | 'explorer' | 'auto-indexer' | 'wallet-activity-first';
 
 export type WalletActivityProfile = 'tiny' | 'safe' | 'wide';
 
@@ -66,10 +66,17 @@ export interface RecentWalletTokenEvent {
 export interface DiscoveredTokenCandidate {
   chain: EvmSupportedChain;
   tokenAddress: string;
+  symbol?: string;
+  name?: string;
+  decimals?: number;
+  firstSeenWallet: string;
+  watchedWallets: string[];
+  txHashes: string[];
+  blockNumber: number;
   firstSeenAt: string;
   walletsSeen: string[];
   txCount: number;
-  source: 'rpc-wallet-activity' | 'rpc-addressless' | 'explorer' | 'rpc-known-tokens';
+  source: 'rpc-wallet-activity' | 'rpc-addressless' | 'explorer' | 'rpc-known-tokens' | 'wallet_activity_first';
   likelyActivityTypes: LikelyActivityType[];
   riskFlags: string[];
   suggestedAction: 'review' | 'merge_known_tokens';
@@ -220,7 +227,19 @@ export interface WalletActivityScanStats {
   rpcWalletActivityNoEventWallets?: number;
   rpcWalletActivityWalletsWithEvents?: number;
   rpcWalletActivityProviderErrors?: number;
+  walletActivityWalletsScanned?: number;
+  walletActivityNewTokensFound?: number;
+  walletActivityCursorLoaded?: boolean;
+  walletActivityCursorWritten?: boolean;
+  walletActivityProviderFallbackUsed?: boolean;
 }
+
+export interface WalletActivityCursorEntry {
+  lastScannedBlock: number;
+  updatedAt: string;
+}
+
+export type WalletActivityCursorState = Record<string, WalletActivityCursorEntry>;
 
 export interface EnrichedTokenEvent extends RecentWalletTokenEvent {
   symbol?: string;

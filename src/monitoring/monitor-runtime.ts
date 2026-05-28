@@ -27,6 +27,7 @@ const ACTIVITY_PROVIDER_MODES = new Set<MonitorActivityProviderMode>([
   'rpc-known-tokens',
   'explorer',
   'auto-indexer',
+  'wallet-activity-first',
 ]);
 
 const EXPLORER_PROVIDER_MODES = new Set<ExplorerProviderMode>(['auto', 'blockscout', 'etherscan']);
