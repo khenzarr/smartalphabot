@@ -4,7 +4,7 @@ Run:
 
 `npm run discovery:auto -- --target-count 30 --include-query-discovery true --batch-max-buyers 50 --batch-max-hours 6 --max-per-query 10`
 
-### Default public-RPC-safe behavior
+### Default - public-RPC-safe behavior
 
 - `--target-count 30`
 - `--batch-max-buyers 50`
